@@ -15,20 +15,24 @@ services:
       # Grafana admin credentials (dev only).
       GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-admin}
-      # Land on the Copilot overview dashboard when opening Grafana.
-      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /otel-lgtm/grafana/conf/provisioning/dashboards/custom/copilot-overview.json
+      # Land on the Cost & Sessions dashboard (tokens + cost) when opening Grafana.
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /otel-lgtm/grafana/conf/provisioning/dashboards/custom/copilot-cost-sessions.json
     volumes:
       # Provider config that tells Grafana where to find our custom dashboards.
       - ./grafana/provisioning/dashboards/copilot.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/copilot.yaml:ro
       # All dashboard JSON files in this folder are auto-loaded on startup.
       - ./grafana/dashboards:/otel-lgtm/grafana/conf/provisioning/dashboards/custom:ro
+      # Custom OTel Collector config that computes gen_ai.usage.cost_usd on spans.
+      - ./otelcol/otelcol-config.yaml:/otel-lgtm/otelcol-config.yaml:ro
       # Persist metrics/traces/logs across container restarts (dev convenience).
       - lgtm-data:/data
     healthcheck:
-      test: ["CMD", "/otel-lgtm/docker/healthcheck.sh"]
+      # The image writes /tmp/ready once every backend is up.
+      test: ["CMD-SHELL", "test -f /tmp/ready || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 5
+      start_period: 90s
 
 volumes:
   lgtm-data:

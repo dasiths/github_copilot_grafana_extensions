@@ -1,0 +1,210 @@
+# OpenTelemetry Collector config for the grafana/otel-lgtm image, extended with a
+# transform processor that projects an estimated USD cost onto every span that
+# carries GenAI token usage (Copilot CLI + VS Code Chat).
+#
+# It mirrors the base image config (receivers/exporters/pipelines) and ADDS
+# `transform/copilot_cost` to the traces pipeline. Mounted at
+# /otel-lgtm/otelcol-config.yaml via docker-compose.
+#
+# Cost model (same approach as the Aspire CopilotCost extension):
+#   billed_input = max(0, input_tokens - cache_read - cache_creation)
+#   cost_usd = (billed_input * rate_in
+#             + output_tokens * rate_out
+#             + cache_read    * rate_cache_read
+#             + cache_creation* rate_cache_write) / 1e6
+# Rates are USD per 1,000,000 tokens. EDIT THE RATES BELOW to match your plan;
+# they are illustrative list prices, not authoritative. Unmatched models use the
+# `default` rates.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+        cors:
+          allowed_origins:
+            - http://*
+  prometheus/collector:
+    config:
+      scrape_configs:
+        - job_name: "opentelemetry-collector"
+          scrape_interval: 1s
+          static_configs:
+            - targets: ["127.0.0.1:8888"]
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+    path: "/ready"
+
+processors:
+  batch:
+
+  # Convert the sum connector's delta metrics to cumulative for Prometheus.
+  deltatocumulative:
+
+  transform/copilot_cost:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          # --- Normalize token counts into temp int attributes (default 0). ---
+          - set(attributes["_ct_in"], Int(attributes["gen_ai.usage.input_tokens"])) where attributes["gen_ai.usage.input_tokens"] != nil
+          - set(attributes["_ct_in"], 0) where attributes["_ct_in"] == nil
+          - set(attributes["_ct_out"], Int(attributes["gen_ai.usage.output_tokens"])) where attributes["gen_ai.usage.output_tokens"] != nil
+          - set(attributes["_ct_out"], 0) where attributes["_ct_out"] == nil
+          - set(attributes["_ct_cr"], Int(attributes["gen_ai.usage.cache_read.input_tokens"])) where attributes["gen_ai.usage.cache_read.input_tokens"] != nil
+          - set(attributes["_ct_cr"], 0) where attributes["_ct_cr"] == nil
+          - set(attributes["_ct_cc"], Int(attributes["gen_ai.usage.cache_creation.input_tokens"])) where attributes["gen_ai.usage.cache_creation.input_tokens"] != nil
+          - set(attributes["_ct_cc"], 0) where attributes["_ct_cc"] == nil
+
+          # --- Billed (uncached) input = input - cache_read - cache_creation. ---
+          - set(attributes["_ct_bin"], attributes["_ct_in"] - attributes["_ct_cr"] - attributes["_ct_cc"])
+          - set(attributes["_ct_bin"], 0) where attributes["_ct_bin"] < 0
+
+          # --- Resolve model (request.model, else response.model). ---
+          - set(attributes["_model"], attributes["gen_ai.request.model"]) where attributes["gen_ai.request.model"] != nil
+          - set(attributes["_model"], attributes["gen_ai.response.model"]) where attributes["_model"] == nil and attributes["gen_ai.response.model"] != nil
+          - set(attributes["_model"], "") where attributes["_model"] == nil
+
+          # --- Default rates (USD per 1e6 tokens). ---
+          - set(attributes["_r_in"], 3.0)
+          - set(attributes["_r_out"], 15.0)
+          - set(attributes["_r_cr"], 0.30)
+          - set(attributes["_r_cc"], 3.75)
+
+          # --- Per-model overrides (later statements win; generic before specific). ---
+          # OpenAI GPT-4o
+          - set(attributes["_r_in"], 2.50) where IsMatch(attributes["_model"], "gpt-4o")
+          - set(attributes["_r_out"], 10.0) where IsMatch(attributes["_model"], "gpt-4o")
+          - set(attributes["_r_cr"], 1.25) where IsMatch(attributes["_model"], "gpt-4o")
+          - set(attributes["_r_cc"], 2.50) where IsMatch(attributes["_model"], "gpt-4o")
+          - set(attributes["_r_in"], 0.15) where IsMatch(attributes["_model"], "gpt-4o-mini")
+          - set(attributes["_r_out"], 0.60) where IsMatch(attributes["_model"], "gpt-4o-mini")
+          - set(attributes["_r_cr"], 0.075) where IsMatch(attributes["_model"], "gpt-4o-mini")
+          - set(attributes["_r_cc"], 0.15) where IsMatch(attributes["_model"], "gpt-4o-mini")
+          # OpenAI GPT-4.1
+          - set(attributes["_r_in"], 2.00) where IsMatch(attributes["_model"], "gpt-4.1")
+          - set(attributes["_r_out"], 8.00) where IsMatch(attributes["_model"], "gpt-4.1")
+          - set(attributes["_r_cr"], 0.50) where IsMatch(attributes["_model"], "gpt-4.1")
+          - set(attributes["_r_cc"], 2.00) where IsMatch(attributes["_model"], "gpt-4.1")
+          - set(attributes["_r_in"], 0.40) where IsMatch(attributes["_model"], "gpt-4.1-mini")
+          - set(attributes["_r_out"], 1.60) where IsMatch(attributes["_model"], "gpt-4.1-mini")
+          - set(attributes["_r_cr"], 0.10) where IsMatch(attributes["_model"], "gpt-4.1-mini")
+          - set(attributes["_r_cc"], 0.40) where IsMatch(attributes["_model"], "gpt-4.1-mini")
+          # OpenAI GPT-5
+          - set(attributes["_r_in"], 1.25) where IsMatch(attributes["_model"], "gpt-5")
+          - set(attributes["_r_out"], 10.0) where IsMatch(attributes["_model"], "gpt-5")
+          - set(attributes["_r_cr"], 0.125) where IsMatch(attributes["_model"], "gpt-5")
+          - set(attributes["_r_cc"], 1.25) where IsMatch(attributes["_model"], "gpt-5")
+          - set(attributes["_r_in"], 0.25) where IsMatch(attributes["_model"], "gpt-5-mini")
+          - set(attributes["_r_out"], 2.00) where IsMatch(attributes["_model"], "gpt-5-mini")
+          - set(attributes["_r_cr"], 0.025) where IsMatch(attributes["_model"], "gpt-5-mini")
+          - set(attributes["_r_cc"], 0.25) where IsMatch(attributes["_model"], "gpt-5-mini")
+          # OpenAI o-series
+          - set(attributes["_r_in"], 2.00) where IsMatch(attributes["_model"], "o3")
+          - set(attributes["_r_out"], 8.00) where IsMatch(attributes["_model"], "o3")
+          - set(attributes["_r_cr"], 0.50) where IsMatch(attributes["_model"], "o3")
+          - set(attributes["_r_cc"], 2.00) where IsMatch(attributes["_model"], "o3")
+          - set(attributes["_r_in"], 1.10) where IsMatch(attributes["_model"], "o4-mini")
+          - set(attributes["_r_out"], 4.40) where IsMatch(attributes["_model"], "o4-mini")
+          - set(attributes["_r_cr"], 0.275) where IsMatch(attributes["_model"], "o4-mini")
+          - set(attributes["_r_cc"], 1.10) where IsMatch(attributes["_model"], "o4-mini")
+          # Anthropic Claude
+          - set(attributes["_r_in"], 3.00) where IsMatch(attributes["_model"], "claude.*sonnet")
+          - set(attributes["_r_out"], 15.0) where IsMatch(attributes["_model"], "claude.*sonnet")
+          - set(attributes["_r_cr"], 0.30) where IsMatch(attributes["_model"], "claude.*sonnet")
+          - set(attributes["_r_cc"], 3.75) where IsMatch(attributes["_model"], "claude.*sonnet")
+          - set(attributes["_r_in"], 0.80) where IsMatch(attributes["_model"], "claude.*haiku")
+          - set(attributes["_r_out"], 4.00) where IsMatch(attributes["_model"], "claude.*haiku")
+          - set(attributes["_r_cr"], 0.08) where IsMatch(attributes["_model"], "claude.*haiku")
+          - set(attributes["_r_cc"], 1.00) where IsMatch(attributes["_model"], "claude.*haiku")
+          - set(attributes["_r_in"], 15.0) where IsMatch(attributes["_model"], "claude.*opus")
+          - set(attributes["_r_out"], 75.0) where IsMatch(attributes["_model"], "claude.*opus")
+          - set(attributes["_r_cr"], 1.50) where IsMatch(attributes["_model"], "claude.*opus")
+          - set(attributes["_r_cc"], 18.75) where IsMatch(attributes["_model"], "claude.*opus")
+
+          # --- Project cost onto spans that carry token usage. ---
+          - set(attributes["gen_ai.usage.cost_usd"], (attributes["_ct_bin"] * attributes["_r_in"] + attributes["_ct_out"] * attributes["_r_out"] + attributes["_ct_cr"] * attributes["_r_cr"] + attributes["_ct_cc"] * attributes["_r_cc"]) / 1000000.0) where attributes["_ct_in"] > 0 or attributes["_ct_out"] > 0 or attributes["_ct_cr"] > 0 or attributes["_ct_cc"] > 0
+
+          # --- Remove temp attributes. ---
+          - delete_key(attributes, "_ct_in")
+          - delete_key(attributes, "_ct_out")
+          - delete_key(attributes, "_ct_cr")
+          - delete_key(attributes, "_ct_cc")
+          - delete_key(attributes, "_ct_bin")
+          - delete_key(attributes, "_model")
+          - delete_key(attributes, "_r_in")
+          - delete_key(attributes, "_r_out")
+          - delete_key(attributes, "_r_cr")
+          - delete_key(attributes, "_r_cc")
+
+# Project per-span cost / AI-unit attributes into Prometheus metrics (full
+# retention, usable by every dashboard) via the sum connector. Summed over
+# invoke_agent spans (one per invocation) and grouped by model.
+connectors:
+  sum:
+    spans:
+      copilot.cost_usd:
+        source_attribute: gen_ai.usage.cost_usd
+        conditions:
+          - 'attributes["gen_ai.operation.name"] == "invoke_agent" and attributes["gen_ai.usage.cost_usd"] != nil'
+        attributes:
+          - key: gen_ai.request.model
+            default_value: unknown
+      copilot.nano_aiu:
+        source_attribute: github.copilot.nano_aiu
+        conditions:
+          - 'attributes["gen_ai.operation.name"] == "invoke_agent" and attributes["github.copilot.nano_aiu"] != nil'
+        attributes:
+          - key: gen_ai.request.model
+            default_value: unknown
+
+exporters:
+  otlphttp/metrics:
+    endpoint: http://127.0.0.1:9090/api/v1/otlp
+    tls:
+      insecure: true
+  otlphttp/traces:
+    endpoint: http://127.0.0.1:4418
+    tls:
+      insecure: true
+  otlphttp/logs:
+    endpoint: http://127.0.0.1:3100/otlp
+    tls:
+      insecure: true
+  otlp/profiles:
+    endpoint: http://127.0.0.1:4040
+    tls:
+      insecure: true
+  debug/metrics:
+    verbosity: detailed
+  debug/traces:
+    verbosity: detailed
+  debug/logs:
+    verbosity: detailed
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [transform/copilot_cost, batch]
+      exporters: [otlphttp/traces, sum]
+    metrics:
+      receivers: [otlp, prometheus/collector]
+      processors: [batch]
+      exporters: [otlphttp/metrics]
+    metrics/cost:
+      receivers: [sum]
+      processors: [deltatocumulative, batch]
+      exporters: [otlphttp/metrics]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/logs]
+    profiles:
+      receivers: [otlp]
+      exporters: [otlp/profiles]

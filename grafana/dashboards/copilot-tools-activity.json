@@ -41,7 +41,7 @@
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(copilot_chat_agent_invocation_duration_seconds_count)", "legendFormat": "invocations" }
+        { "refId": "A", "expr": "sum(copilot_chat_agent_invocation_duration_count)", "legendFormat": "invocations" }
       ]
     },
     {
@@ -93,7 +93,7 @@
       "gridPos": { "h": 9, "w": 12, "x": 12, "y": 4 },
       "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 10 } } },
       "targets": [
-        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, gen_ai_tool_name) (rate(copilot_chat_tool_call_duration_milliseconds_bucket{gen_ai_tool_name=~\"$tool\"}[$__rate_interval])))", "legendFormat": "{{gen_ai_tool_name}}" }
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, gen_ai_tool_name) (rate(copilot_chat_tool_call_duration_bucket{gen_ai_tool_name=~\"$tool\"}[$__rate_interval])))", "legendFormat": "{{gen_ai_tool_name}}" }
       ]
     },
     {
@@ -125,8 +125,8 @@
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 21 },
       "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } } },
       "targets": [
-        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(copilot_chat_agent_invocation_duration_seconds_bucket[$__rate_interval])))", "legendFormat": "p50" },
-        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(copilot_chat_agent_invocation_duration_seconds_bucket[$__rate_interval])))", "legendFormat": "p95" }
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(copilot_chat_agent_invocation_duration_bucket[$__rate_interval])))", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(copilot_chat_agent_invocation_duration_bucket[$__rate_interval])))", "legendFormat": "p95" }
       ]
     }
   ]

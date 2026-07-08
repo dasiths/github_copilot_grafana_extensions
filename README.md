@@ -20,7 +20,7 @@ ready-made dashboards for both.
 
 ```mermaid
 flowchart LR
-  A["VS Code<br/>Copilot Chat"] -- "OTLP/HTTP :4318" --> B["OTel Collector"]
+  A["VS Code<br/>Copilot Chat"] -- "OTLP/HTTP :4318" --> B["OTel Collector<br/>(+ cost_usd transform)"]
   H["Copilot CLI"] -- "OTLP/HTTP :4318" --> B
   subgraph LGTM["grafana/otel-lgtm container"]
     B -- metrics --> C["Prometheus :9090"]
@@ -32,6 +32,10 @@ flowchart LR
   end
   F --> G["Provisioned<br/>Copilot dashboards"]
 ```
+
+The collector is configured ([otelcol/otelcol-config.yaml](otelcol/otelcol-config.yaml))
+to project an estimated USD cost (`gen_ai.usage.cost_usd`) onto every span that
+carries token usage, so cost is available to any panel without per-dashboard math.
 
 ## Prerequisites
 
@@ -150,15 +154,85 @@ How the CLI differs from the VS Code extension:
 
 ## Dashboards
 
-| Dashboard | File | Surface | Highlights |
-|-----------|------|---------|------------|
-| GitHub Copilot - Overview | [copilot-overview.json](grafana/dashboards/copilot-overview.json) | Shared + VS Code | Sessions, input/output tokens, token rate by model, LLM call duration, time to first token, tool calls |
-| GitHub Copilot - Tools & Agent Activity | [copilot-tools-activity.json](grafana/dashboards/copilot-tools-activity.json) | VS Code extension | Tool call counts and latency, edit accept/reject decisions, lines of code changed, agent invocation duration |
-| GitHub Copilot - CLI | [copilot-cli.json](grafana/dashboards/copilot-cli.json) | Copilot CLI | Tokens, LLM/agent duration, time to first chunk, tool calls by tool/outcome, tool latency |
+| Dashboard | File | Source | Surface | Highlights |
+|-----------|------|--------|---------|------------|
+| GitHub Copilot - Overview | [copilot-overview.json](grafana/dashboards/copilot-overview.json) | Metrics (Prometheus) | Shared + VS Code | Sessions, input/output tokens, token rate by model, LLM call duration, time to first token, tool calls. Has a **Source (service)** filter to isolate VS Code vs CLI |
+| GitHub Copilot - Tools & Agent Activity | [copilot-tools-activity.json](grafana/dashboards/copilot-tools-activity.json) | Metrics (Prometheus) | VS Code extension | Tool call counts and latency, edit accept/reject decisions, lines of code changed, agent invocation duration |
+| GitHub Copilot - Cost & Sessions | [copilot-cost-sessions.json](grafana/dashboards/copilot-cost-sessions.json) | Spans (Tempo) | Both (CLI + VS Code) | **Home dashboard.** Estimated USD cost + tokens up top, then Sessions / Agent invocations / Requests tables (tokens, cache, `cost_usd`), with **Source**, **Model**, and **Session** filters |
 
-The token and LLM-duration panels on the overview dashboard use shared `gen_ai.*`
-metrics, so they include both surfaces. Use the CLI dashboard's **Service (job)**
-variable to isolate `github-copilot` telemetry.
+Both metric surfaces share the same `gen_ai.*` token and duration metrics, so the
+Overview dashboard covers VS Code and the CLI together; its **Source (service)**
+filter isolates `copilot-chat` (VS Code) from `github-copilot` (CLI). A dedicated
+CLI dashboard is no longer needed — the shared metrics plus the source filter,
+together with the span-based Cost & Sessions dashboard, cover the CLI.
+
+### Cost & Sessions (span-based, the home dashboard)
+
+This is the default/home dashboard and leads with **estimated USD cost and
+tokens**. Cost, cache tokens, and per-session detail live only on trace spans
+(not metrics), so the dashboard reads them from Tempo:
+
+- The **Session** variable filters by `gen_ai.conversation.id` (regex; copy an id
+  from the table). **Source** and **Model** filter by service and model.
+- The telemetry is hierarchical: a **session** (`gen_ai.conversation.id`) contains
+  one or more **agent invocations** (`invoke_agent` spans, one per user message),
+  each of which makes several **requests** (`chat` spans, one LLM call each). The
+  dashboard mirrors this with three tables — **Sessions** (grouped by
+  `conversation.id`, totals per session), **Agent invocations** (one row per
+  `invoke_agent` span), and **Requests** (one row per `chat` span) — plus stat
+  cards for cost, tokens, cache, and sessions. Everything is computed from **Tempo
+  Search** (full trace retention), so it stays populated as long as traces exist.
+- Span names include a model suffix (for example `chat claude-opus-4.8`), so the
+  queries match by regex (`name =~ "chat.*"` / `name =~ "invoke_agent.*"`) to
+  catch both surfaces. Per-request input tokens overlap (context is re-sent each
+  turn), so trust the invocation-level totals rather than summing requests.
+
+#### Estimated cost
+
+Cost is shown as **`gen_ai.usage.cost_usd`**, computed at ingest by the OTel
+Collector — not by the dashboard. The collector's transform
+([otelcol/otelcol-config.yaml](otelcol/otelcol-config.yaml)) applies, per span:
+
+```text
+billed_input = max(0, input_tokens - cache_read - cache_creation)
+cost_usd = (billed_input   * rate_in
+          + output_tokens  * rate_out
+          + cache_read     * rate_cache_read
+          + cache_creation * rate_cache_write) / 1e6
+```
+
+Rates are **USD per 1,000,000 tokens**, matched per model (with a `default`
+fallback). This mirrors the approach of the
+[Aspire CopilotCost extension](https://github.com/cicorias/copilot-cost-dashshboard-aspire/tree/main/extension/CopilotCost).
+The rates in the config are **illustrative list prices — edit them** to match
+your plan, then restart the container (`docker compose restart lgtm`).
+
+> The provider does emit a raw `github.copilot.cost` (CLI only, unit-opaque, not
+> USD) and `github.copilot.nano_aiu` (÷1e9 = the CLI's "AI credits"), but the
+> dashboard uses the collector-computed USD estimate instead.
+
+#### Cost as a Prometheus metric
+
+The collector also runs a **`sum` connector** that projects the per-span cost and
+AI-unit attributes into Prometheus metrics, so cost is available to *any*
+dashboard with full retention (not just Tempo Search):
+
+| Metric | Meaning | Labels |
+|--------|---------|--------|
+| `copilot_cost_usd_total` | Summed `gen_ai.usage.cost_usd` over `invoke_agent` spans | `gen_ai_request_model`, `job` (source) |
+| `copilot_nano_aiu_total` | Summed `github.copilot.nano_aiu` (÷1e9 = AI credits) | `gen_ai_request_model`, `job` (source) |
+
+For example, cost added per interval by model:
+`sum by (gen_ai_request_model) (increase(copilot_cost_usd_total[$__rate_interval]))`.
+Because these are metrics, they work on the Overview dashboard too and are not
+subject to Tempo's span/metrics retention limits.
+
+> Two caveats: (1) cost (`cost_usd` on spans and the `copilot_*_total` metrics)
+> is only produced for telemetry **ingested after** the collector was configured
+> — historical data shows blank cost until new activity flows. (2) The Cost &
+> Sessions *tables* are Search-based (not TraceQL *metrics*), because this image's
+> TraceQL metrics only retain a short recent window; Search keeps the per-session
+> tables populated when a session goes idle.
 
 Traces (the `invoke_agent` -> `chat` -> `execute_tool` span tree) are stored in
 Tempo. Open **Explore** in Grafana, select the Tempo data source, and filter by
@@ -177,19 +251,22 @@ dashboards use these normalized names, for example:
 | OpenTelemetry instrument | Prometheus series used in dashboards |
 |--------------------------|--------------------------------------|
 | `gen_ai.client.token.usage` | `gen_ai_client_token_usage_sum`, `_count`, `_bucket` |
-| `gen_ai.client.operation.duration` | `gen_ai_client_operation_duration_seconds_bucket` |
+| `gen_ai.client.operation.duration` | `gen_ai_client_operation_duration_bucket` (VS Code) / `gen_ai_client_operation_duration_seconds_bucket` (CLI) |
 | `copilot_chat.session.count` | `copilot_chat_session_count_total` |
 | `copilot_chat.tool.call.count` | `copilot_chat_tool_call_count_total` |
+| `copilot_chat.tool.call.duration` | `copilot_chat_tool_call_duration_bucket` (values in ms) |
+| `copilot_chat.time_to_first_token` | `copilot_chat_time_to_first_token_bucket` |
+| `copilot_chat.agent.invocation.duration` | `copilot_chat_agent_invocation_duration_bucket` |
 | `github.copilot.tool.call.count` (CLI) | `github_copilot_tool_call_count_total` |
 | `github.copilot.tool.call.duration` (CLI) | `github_copilot_tool_call_duration_seconds_bucket` |
 | `gen_ai.client.operation.time_to_first_chunk` (CLI) | `gen_ai_client_operation_time_to_first_chunk_seconds_bucket` |
-| `copilot_chat.tool.call.duration` | `copilot_chat_tool_call_duration_milliseconds_bucket` |
-| `copilot_chat.time_to_first_token` | `copilot_chat_time_to_first_token_seconds_bucket` |
 
-If a panel shows "No data", the exact series name or a label may differ in your
-setup. Confirm the real names in Grafana **Explore** with the Prometheus data
-source (use the metrics browser, or query `{__name__=~"copilot.*|gen_ai.*"}`),
-then adjust the panel query.
+Whether Prometheus appends a unit suffix (for example `_seconds`) depends on the
+unit metadata the emitter attaches. The VS Code extension's `copilot_chat.*`
+duration histograms arrive without a unit suffix, while the CLI's `gen_ai.*`
+durations arrive as `_seconds`. If a panel shows "No data", confirm the real
+names in Grafana **Explore** with the Prometheus data source (use the metrics
+browser, or query `{__name__=~"copilot.*|gen_ai.*"}`), then adjust the query.
 
 ## Add your own dashboards
 
@@ -216,6 +293,10 @@ dashboard works regardless of the data source UID.
 | 4318 | OTLP/HTTP | Telemetry ingest (Copilot default) |
 | 9090 | Prometheus | Metrics, optional |
 | 3200 | Tempo | Traces, optional |
+
+## Screenshots
+
+![GitHub Copilot Cost & Sessions dashboard in Grafana showing estimated USD cost, token and cache totals, and per-session, per-invocation, and per-request tables](docs/screenshots/cost-sessions-dashboard.png)
 
 ## References
 
