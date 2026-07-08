@@ -172,7 +172,7 @@
       "title": "Sessions (grouped by conversation.id)",
       "description": "One row per session (gen_ai.conversation.id). Tokens/cost summed across the session's invocations; 'input_tokens (count)' = number of invocations. Cost is populated only for spans ingested after the collector was configured.",
       "datasource": { "type": "tempo", "uid": "${tempoDs}" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 5 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 14 },
       "options": { "showHeader": true, "footer": { "show": true, "reducer": ["sum"], "countRows": false } },
       "targets": [
         { "refId": "A", "datasource": { "type": "tempo", "uid": "${tempoDs}" }, "queryType": "traceql", "tableType": "spans", "limit": 500, "query": "{ name=~\"invoke_agent.*\" && resource.service.name=~\"${source:pipe}\" && span.gen_ai.request.model=~\"${model:pipe}\" && span.gen_ai.conversation.id=~\"$session\" } | select(resource.service.name, span.gen_ai.request.model, span.gen_ai.conversation.id, span.gen_ai.usage.cost_usd, span.gen_ai.usage.input_tokens, span.gen_ai.usage.output_tokens, span.gen_ai.usage.cache_read.input_tokens, span.gen_ai.usage.cache_creation.input_tokens, span.github.copilot.turn_count)" }
@@ -205,7 +205,7 @@
       "title": "Agent invocations (invoke_agent spans)",
       "description": "One row per agent invocation. Several rows can share one session (gen_ai.conversation.id). The footer shows totals.",
       "datasource": { "type": "tempo", "uid": "${tempoDs}" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 13 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 22 },
       "fieldConfig": { "defaults": {}, "overrides": [ { "matcher": { "id": "byName", "options": "Trace ID" }, "properties": [ { "id": "links", "value": [ { "title": "Open trace", "url": "", "internal": { "datasourceUid": "tempo", "datasourceName": "Tempo", "query": { "queryType": "traceql", "query": "${__value.raw}" } } } ] } ] } ] },
       "options": { "showHeader": true, "footer": { "show": true, "reducer": ["sum"], "countRows": false } },
       "targets": [
@@ -228,7 +228,7 @@
       "title": "Requests (chat spans)",
       "description": "One row per LLM request. Span name is chat <model>, matched by regex. Per-request input tokens overlap (context resent each turn) — trust invocation-level totals above.",
       "datasource": { "type": "tempo", "uid": "${tempoDs}" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 23 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 32 },
       "fieldConfig": { "defaults": {}, "overrides": [ { "matcher": { "id": "byName", "options": "Trace ID" }, "properties": [ { "id": "links", "value": [ { "title": "Open trace", "url": "", "internal": { "datasourceUid": "tempo", "datasourceName": "Tempo", "query": { "queryType": "traceql", "query": "${__value.raw}" } } } ] } ] } ] },
       "options": { "showHeader": true, "footer": { "show": true, "reducer": ["sum"], "countRows": false } },
       "targets": [
@@ -246,12 +246,30 @@
       ]
     },
     {
+      "type": "row",
+      "title": "Trends over time (Prometheus metrics — full retention)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
       "type": "timeseries",
-      "title": "Cost (USD) by model over time",
-      "description": "From the copilot_cost_usd_total Prometheus metric (produced by the collector's sum connector). Metric-based, so it has full retention and is not limited by span/session filters.",
+      "title": "Tokens over time (by type)",
+      "description": "gen_ai.client.token.usage added per interval, split by input/output. Metric-based (Prometheus), full retention.",
       "datasource": { "type": "prometheus", "uid": "${promDs}" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 33 },
-      "fieldConfig": { "defaults": { "unit": "currencyUSD", "custom": { "drawStyle": "bars", "fillOpacity": 40, "stacking": { "mode": "normal" } } } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10, "showPoints": "auto", "lineWidth": 2 } } },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "${promDs}" }, "expr": "sum by (gen_ai_token_type) (increase(gen_ai_client_token_usage_sum{job=~\"${source:pipe}\", gen_ai_request_model=~\"${model:pipe}\"}[$__rate_interval]))", "legendFormat": "{{gen_ai_token_type}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Cost (USD) over time (by model)",
+      "description": "copilot_cost_usd_total added per interval, by model. Metric-based (collector sum connector), full retention.",
+      "datasource": { "type": "prometheus", "uid": "${promDs}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "custom": { "drawStyle": "line", "fillOpacity": 10, "showPoints": "auto", "lineWidth": 2 } } },
       "targets": [
         { "refId": "A", "datasource": { "type": "prometheus", "uid": "${promDs}" }, "expr": "sum by (gen_ai_request_model) (increase(copilot_cost_usd_total{job=~\"${source:pipe}\", gen_ai_request_model=~\"${model:pipe}\"}[$__rate_interval]))", "legendFormat": "{{gen_ai_request_model}}" }
       ]
