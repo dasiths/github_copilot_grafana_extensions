@@ -1,0 +1,133 @@
+{
+  "uid": "copilot-tools-activity",
+  "title": "GitHub Copilot - Tools & Agent Activity",
+  "tags": ["copilot", "genai", "otel", "agent"],
+  "editable": true,
+  "schemaVersion": 39,
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Prometheus",
+        "type": "datasource",
+        "query": "prometheus",
+        "hide": 0,
+        "current": {},
+        "refresh": 1
+      },
+      {
+        "name": "tool",
+        "label": "Tool",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(copilot_chat_tool_call_count_total, gen_ai_tool_name)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": { "text": "All", "value": "$__all" },
+        "refresh": 2,
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Agent invocations",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "sum(copilot_chat_agent_invocation_duration_seconds_count)", "legendFormat": "invocations" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Lines of code (accepted edits)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "sum(copilot_chat_lines_of_code_count_total)", "legendFormat": "lines" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Edit decisions",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "sum(copilot_chat_edit_acceptance_count_total)", "legendFormat": "decisions" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "User feedback votes",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "sum(copilot_chat_user_feedback_count_total)", "legendFormat": "votes" }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Tool calls by tool",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": { "orientation": "horizontal", "showValue": "auto", "legend": { "showLegend": false } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (gen_ai_tool_name) (copilot_chat_tool_call_count_total{gen_ai_tool_name=~\"$tool\"})", "legendFormat": "{{gen_ai_tool_name}}", "format": "table", "instant": true }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool call latency p95 by tool",
+      "description": "copilot_chat.tool.call.duration histogram (milliseconds).",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 10 } } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, gen_ai_tool_name) (rate(copilot_chat_tool_call_duration_milliseconds_bucket{gen_ai_tool_name=~\"$tool\"}[$__rate_interval])))", "legendFormat": "{{gen_ai_tool_name}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Edit acceptance decisions over time",
+      "description": "copilot_chat.edit.acceptance.count — accept vs reject decisions.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 40, "stacking": { "mode": "normal" } } } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (copilot_chat_edit_outcome) (rate(copilot_chat_edit_acceptance_count_total[$__rate_interval]))", "legendFormat": "{{copilot_chat_edit_outcome}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Lines of code changed by accepted edits",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } } },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(copilot_chat_lines_of_code_count_total[$__rate_interval]))", "legendFormat": "lines/sec" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Agent invocation duration (p50 / p95)",
+      "description": "copilot_chat.agent.invocation.duration histogram (seconds).",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 21 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(copilot_chat_agent_invocation_duration_seconds_bucket[$__rate_interval])))", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(copilot_chat_agent_invocation_duration_seconds_bucket[$__rate_interval])))", "legendFormat": "p95" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+# Local environment overrides
+.env
+
+# Local data if a bind mount is used instead of the named volume
+/data/
+data/
+
+# OS / editor cruft
+.DS_Store

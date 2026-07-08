@@ -1,0 +1,20 @@
+// GitHub Copilot Chat OpenTelemetry settings for the VS Code extension.
+//
+// IMPORTANT: these settings are APPLICATION-SCOPED. VS Code only honors them in
+// your USER settings (Default profile) — it ignores and warns about them in a
+// workspace .vscode/settings.json. Add them to User settings, not the workspace.
+//
+// How to apply:
+//   1. Open the Command Palette (Ctrl+Shift+P / Cmd+Shift+P).
+//   2. Run "Preferences: Open User Settings (JSON)".
+//   3. Merge the keys below into that file and save.
+{
+  "github.copilot.chat.otel.enabled": true,
+  "github.copilot.chat.otel.exporterType": "otlp-http",
+  "github.copilot.chat.otel.otlpEndpoint": "http://localhost:4318",
+
+  // Optional: capture full prompt/response/tool content into spans.
+  // WARNING: this can include source code and sensitive data. Only enable in a
+  // trusted, local environment.
+  "github.copilot.chat.otel.captureContent": false
+}

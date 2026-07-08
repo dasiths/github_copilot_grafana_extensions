@@ -1,0 +1,172 @@
+{
+  "uid": "copilot-cli",
+  "title": "GitHub Copilot - CLI",
+  "tags": ["copilot", "genai", "otel", "cli"],
+  "editable": true,
+  "schemaVersion": 39,
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Prometheus",
+        "type": "datasource",
+        "query": "prometheus",
+        "hide": 0,
+        "current": {},
+        "refresh": 1
+      },
+      {
+        "name": "job",
+        "label": "Service (job)",
+        "description": "The Copilot CLI reports as service.name=github-copilot (job label).",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(gen_ai_client_token_usage_count, job)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": { "text": "github-copilot", "value": "github-copilot" },
+        "refresh": 2,
+        "sort": 1
+      },
+      {
+        "name": "model",
+        "label": "Model",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(gen_ai_client_token_usage_count{job=~\"$job\"}, gen_ai_request_model)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": { "text": "All", "value": "$__all" },
+        "refresh": 2,
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Input tokens",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "sum(gen_ai_client_token_usage_sum{job=~\"$job\", gen_ai_token_type=\"input\", gen_ai_request_model=~\"$model\"})", "legendFormat": "input" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Output tokens",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "sum(gen_ai_client_token_usage_sum{job=~\"$job\", gen_ai_token_type=\"output\", gen_ai_request_model=~\"$model\"})", "legendFormat": "output" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Tool calls",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "sum(github_copilot_tool_call_count_total{job=~\"$job\"})", "legendFormat": "tool calls" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Agent invocations",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "sum(github_copilot_agent_turn_count_count{job=~\"$job\"})", "legendFormat": "invocations" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Token usage rate by type",
+      "description": "gen_ai.client.token.usage, split by gen_ai.token.type.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 15, "stacking": { "mode": "normal" } } } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (gen_ai_token_type) (rate(gen_ai_client_token_usage_sum{job=~\"$job\", gen_ai_request_model=~\"$model\"}[$__rate_interval]))", "legendFormat": "{{gen_ai_token_type}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Token usage rate by model",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (gen_ai_request_model) (rate(gen_ai_client_token_usage_sum{job=~\"$job\", gen_ai_request_model=~\"$model\"}[$__rate_interval]))", "legendFormat": "{{gen_ai_request_model}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM / agent operation duration (p50 / p95)",
+      "description": "gen_ai.client.operation.duration histogram (seconds).",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(gen_ai_client_operation_duration_seconds_bucket{job=~\"$job\", gen_ai_request_model=~\"$model\"}[$__rate_interval])))", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(gen_ai_client_operation_duration_seconds_bucket{job=~\"$job\", gen_ai_request_model=~\"$model\"}[$__rate_interval])))", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Time to first chunk (p50 / p95)",
+      "description": "gen_ai.client.operation.time_to_first_chunk histogram (seconds).",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(gen_ai_client_operation_time_to_first_chunk_seconds_bucket{job=~\"$job\"}[$__rate_interval])))", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(gen_ai_client_operation_time_to_first_chunk_seconds_bucket{job=~\"$job\"}[$__rate_interval])))", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "type": "piechart",
+      "title": "Tool calls by tool",
+      "description": "github.copilot.tool.call.count (Copilot CLI vendor metric).",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 20 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "legend": { "displayMode": "table", "placement": "right", "values": ["value"] } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (gen_ai_tool_name) (github_copilot_tool_call_count_total{job=~\"$job\"})", "legendFormat": "{{gen_ai_tool_name}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool call latency p95 by tool",
+      "description": "github.copilot.tool.call.duration histogram (seconds).",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 20 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, gen_ai_tool_name) (rate(github_copilot_tool_call_duration_seconds_bucket{job=~\"$job\"}[$__rate_interval])))", "legendFormat": "{{gen_ai_tool_name}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool calls by outcome",
+      "description": "github.copilot.tool.call.count split by the success attribute.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 20 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 40, "stacking": { "mode": "normal" } } } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (success) (rate(github_copilot_tool_call_count_total{job=~\"$job\"}[$__rate_interval]))", "legendFormat": "success={{success}}" }
+      ]
+    }
+  ]
+}

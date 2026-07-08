@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: "GitHub Copilot"
+    type: file
+    # Surface these dashboards inside a "GitHub Copilot" folder in Grafana.
+    folder: "GitHub Copilot"
+    allowUiUpdates: true
+    updateIntervalSeconds: 10
+    options:
+      # Mount point defined in docker-compose.yml.
+      path: /otel-lgtm/grafana/conf/provisioning/dashboards/custom
+      foldersFromFilesStructure: false
