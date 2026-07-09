@@ -1,0 +1,77 @@
+{
+  "uid": "copilot-agent-graph",
+  "title": "GitHub Copilot - Agent Graph",
+  "tags": ["copilot", "genai", "otel", "agents", "graph"],
+  "editable": true,
+  "schemaVersion": 39,
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "type": "text",
+      "title": "About",
+      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "Aggregate **agent topology** for the selected time range. Nodes are agents (`gen_ai.agent.name`); directed edges are parent agent \u2192 subagent, derived by the `agent-graph` sidecar from the `invoke_agent \u2192 execute_tool(runSubagent/task) \u2192 invoke_agent` hop in Tempo traces. Node stats: invocations, estimated cost, tokens, and tool calls. Most useful with multi-agent runs (subagents via `runSubagent` / the CLI `task` tool)."
+      }
+    },
+    {
+      "type": "nodeGraph",
+      "title": "Agent topology (parent \u2192 subagent)",
+      "description": "Nodes = agents; edges = parent agent invoking a subagent. Windowed to the dashboard time range via the Infinity time macros passed to the sidecar.",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 20, "w": 24, "x": 0, "y": 3 },
+      "options": {
+        "nodes": { "mainStatUnit": "", "secondaryStatUnit": "" },
+        "edges": { "mainStatUnit": "" }
+      },
+      "targets": [
+        {
+          "refId": "nodes",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "url": "http://agent-graph:8099/graph.json?from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}",
+          "url_options": { "method": "GET", "data": "" },
+          "root_selector": "nodes",
+          "format": "node-graph-nodes",
+          "columns": [
+            { "selector": "id", "text": "id", "type": "string" },
+            { "selector": "title", "text": "title", "type": "string" },
+            { "selector": "mainstat", "text": "mainstat", "type": "string" },
+            { "selector": "secondarystat", "text": "secondarystat", "type": "string" },
+            { "selector": "detail__invocations", "text": "detail__invocations", "type": "number" },
+            { "selector": "detail__cost_usd", "text": "detail__cost_usd", "type": "number" },
+            { "selector": "detail__tokens_in", "text": "detail__tokens_in", "type": "number" },
+            { "selector": "detail__tokens_out", "text": "detail__tokens_out", "type": "number" },
+            { "selector": "detail__tool_calls", "text": "detail__tool_calls", "type": "number" }
+          ]
+        },
+        {
+          "refId": "edges",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "url": "http://agent-graph:8099/graph.json?from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}",
+          "url_options": { "method": "GET", "data": "" },
+          "root_selector": "edges",
+          "format": "node-graph-edges",
+          "columns": [
+            { "selector": "id", "text": "id", "type": "string" },
+            { "selector": "source", "text": "source", "type": "string" },
+            { "selector": "target", "text": "target", "type": "string" },
+            { "selector": "mainstat", "text": "mainstat", "type": "string" },
+            { "selector": "thickness", "text": "thickness", "type": "number" },
+            { "selector": "detail__invocations", "text": "detail__invocations", "type": "number" },
+            { "selector": "detail__tool", "text": "detail__tool", "type": "string" }
+          ]
+        }
+      ]
+    }
+  ]
+}

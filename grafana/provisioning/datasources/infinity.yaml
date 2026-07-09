@@ -1,0 +1,18 @@
+# Infinity datasource, used by the Agent Graph dashboard to read the
+# agent-graph sidecar's JSON (nodes + edges) for the Node Graph panel.
+#
+# Infinity's backend time macros (${__timeFrom:date:seconds} /
+# ${__timeTo:date:seconds}) let the panel pass the dashboard time range to the
+# sidecar so the graph stays windowed like the other dashboards. Those macros
+# require the Infinity plugin >= 2.7.1 (preinstalled via GF_PLUGINS_PREINSTALL_SYNC
+# in docker-compose.yml).
+apiVersion: 1
+
+datasources:
+  - name: Infinity
+    type: yesoreyeram-infinity-datasource
+    uid: infinity
+    access: proxy
+    isDefault: false
+    editable: true
+    jsonData: {}

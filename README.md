@@ -30,13 +30,17 @@ flowchart LR
     D --> F
     E --> F
   end
+  D -- "search + walk traces" --> S["agent-graph sidecar :8099"]
+  S -- "nodes + edges JSON" --> F
   F --> G["Provisioned<br/>Copilot dashboards"]
 ```
 
 The collector ([otelcol/otelcol-config.yaml](otelcol/otelcol-config.yaml))
 projects an estimated USD cost onto every span that carries token usage, so cost
 is available to any panel without per-dashboard math. See
-[docs/cost-and-metrics.md](docs/cost-and-metrics.md) for the model.
+[docs/cost-and-metrics.md](docs/cost-and-metrics.md) for the model. The
+[agent-graph](agent-graph/) sidecar walks Tempo traces to build the agent
+topology (parent agent → subagent) for the Agent Graph dashboard.
 
 ## Prerequisites
 
@@ -92,6 +96,7 @@ docker compose down -v       # also delete the persisted data volume
 | [Overview](grafana/dashboards/copilot-overview.json) | Metrics (Prometheus) | Shared + VS Code |
 | [Tools & Agent Activity](grafana/dashboards/copilot-tools-activity.json) | Metrics (Prometheus) | VS Code |
 | [Agents](grafana/dashboards/copilot-agents.json) | Metrics (Prometheus) | Both |
+| [Agent Graph](grafana/dashboards/copilot-agent-graph.json) | Traces via `agent-graph` sidecar (Infinity) | Both |
 
 See [docs/dashboards.md](docs/dashboards.md) for what each dashboard shows, the
 Cost & Sessions data model, metric naming, and how to add your own.
@@ -114,6 +119,7 @@ Cost & Sessions data model, metric naming, and how to add your own.
 | 4318 | OTLP/HTTP | Telemetry ingest (Copilot default) |
 | 9090 | Prometheus | Metrics, optional |
 | 3200 | Tempo | Traces, optional |
+| 8099 | agent-graph | Sidecar nodes/edges JSON, optional |
 
 ## Screenshots
 

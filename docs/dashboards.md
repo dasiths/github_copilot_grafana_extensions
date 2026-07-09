@@ -1,6 +1,6 @@
 # Dashboards
 
-The stack provisions four dashboards into the **GitHub Copilot** folder in
+The stack provisions five dashboards into the **GitHub Copilot** folder in
 Grafana. This page describes each one, explains the Cost & Sessions data model,
 covers Prometheus metric naming, and shows how to add your own dashboards.
 
@@ -12,6 +12,7 @@ covers Prometheus metric naming, and shows how to add your own dashboards.
 | GitHub Copilot - Tools & Agent Activity | [copilot-tools-activity.json](../grafana/dashboards/copilot-tools-activity.json) | Metrics (Prometheus) | VS Code extension | Tool call counts and latency, edit accept/reject decisions, lines of code changed, agent invocation duration |
 | GitHub Copilot - Cost & Sessions | [copilot-cost-sessions.json](../grafana/dashboards/copilot-cost-sessions.json) | Spans (Tempo) | Both (CLI + VS Code) | **Home dashboard.** Estimated USD cost + tokens up top, then Sessions / Agent invocations / Requests tables (tokens, cache, `cost_usd`), with **Source**, **Model**, and **Session** filters |
 | GitHub Copilot - Agents | [copilot-agents.json](../grafana/dashboards/copilot-agents.json) | Metrics (Prometheus) | Both (CLI + VS Code) | Per-agent breakdown (`gen_ai.agent.name`): invocations, cost, tokens, duration p95, and activity over time. Most useful with multi-agent CLI runs (subagents via the `task` tool) |
+| GitHub Copilot - Agent Graph | [copilot-agent-graph.json](../grafana/dashboards/copilot-agent-graph.json) | Traces via the `agent-graph` sidecar (Infinity) | Both (CLI + VS Code) | Node Graph of the agent topology: nodes = agents, directed edges = parent agent → subagent, with per-node invocations, cost, tokens, and tool calls |
 
 Both metric surfaces share the same `gen_ai.*` token and duration metrics, so the
 Overview dashboard covers VS Code and the CLI together; its **Source (service)**
@@ -52,6 +53,43 @@ the `task` tool) each report under their own agent name. The metrics behind it,
 and the windowed-delta query that keeps its totals in step with the Cost &
 Sessions dashboard, are documented in
 [Cost estimation and Prometheus metrics](cost-and-metrics.md#cost-as-a-prometheus-metric).
+
+## GitHub Copilot - Agent Graph
+
+The Agent Graph dashboard renders the **agent topology** as a Grafana Node Graph:
+nodes are agents (`gen_ai.agent.name`) and directed edges are *parent agent →
+subagent*, with per-node stats (invocations, estimated cost, tokens, tool calls).
+
+No LGTM datasource can produce agent edges natively: every Copilot agent shares
+one `service.name`, subagent spans are span-kind `INTERNAL`, and no span
+attribute names the parent agent. The parent → child relationship is a
+*grandparent hop* in the trace tree:
+
+```text
+invoke_agent (parent agent)
+  └── execute_tool (runSubagent / task)
+        └── invoke_agent (subagent)
+```
+
+The [agent-graph](../agent-graph/) sidecar walks each Tempo trace for the
+selected time range, derives that hop into directed edges, aggregates per-agent
+stats, and serves them as `{"nodes":[...],"edges":[...]}` JSON. The
+[Grafana Infinity datasource](../grafana/provisioning/datasources/infinity.yaml)
+(preinstalled via `GF_PLUGINS_PREINSTALL_SYNC` in
+[docker-compose.yml](../docker-compose.yml)) reads that JSON into the Node Graph
+panel with two queries (`nodes` and `edges`).
+
+- **Windowed:** the panel passes the dashboard time range to the sidecar via
+  Infinity's backend time macros (`${__timeFrom:date:seconds}` /
+  `${__timeTo:date:seconds}` → Tempo `start`/`end`), so the graph stays in step
+  with the other range-windowed dashboards.
+- **Freshness:** the sidecar caches each window for ~30s (a single-flight,
+  short-TTL cache) so the 30s auto-refresh and the two simultaneous
+  `nodes`+`edges` requests collapse to one Tempo walk.
+- **Reach-back:** limited by Tempo's block retention (~48h by default in this
+  image).
+- Most useful with multi-agent runs, where subagents (VS Code `runSubagent` or
+  the CLI `task` tool) report under their own agent name.
 
 ## Metric naming note
 

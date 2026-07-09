@@ -17,11 +17,18 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-admin}
       # Land on the Cost & Sessions dashboard (tokens + cost) when opening Grafana.
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /otel-lgtm/grafana/conf/provisioning/dashboards/custom/copilot-cost-sessions.json
+      # Preinstall the Infinity datasource (>= 2.7.1 for backend time macros) so
+      # the Agent Graph dashboard can read the agent-graph sidecar. SYNC installs
+      # before Grafana starts, so provisioning finds the plugin. Needs outbound
+      # internet on first start to download the plugin.
+      GF_PLUGINS_PREINSTALL_SYNC: yesoreyeram-infinity-datasource
     volumes:
       # Provider config that tells Grafana where to find our custom dashboards.
       - ./grafana/provisioning/dashboards/copilot.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/copilot.yaml:ro
       # All dashboard JSON files in this folder are auto-loaded on startup.
       - ./grafana/dashboards:/otel-lgtm/grafana/conf/provisioning/dashboards/custom:ro
+      # Infinity datasource used by the Agent Graph Node Graph panel.
+      - ./grafana/provisioning/datasources/infinity.yaml:/otel-lgtm/grafana/conf/provisioning/datasources/infinity.yaml:ro
       # Custom OTel Collector config that computes gen_ai.usage.cost_usd on spans.
       - ./otelcol/otelcol-config.yaml:/otel-lgtm/otelcol-config.yaml:ro
       # Persist metrics/traces/logs across container restarts (dev convenience).
@@ -33,6 +40,22 @@ services:
       timeout: 5s
       retries: 5
       start_period: 90s
+
+  agent-graph:
+    # Edge-builder sidecar: walks Tempo traces and serves Grafana Node Graph
+    # frames (nodes + edges) describing the parent-agent -> subagent topology.
+    # Consumed by the Agent Graph dashboard via the Infinity datasource.
+    build: ./agent-graph
+    container_name: copilot-agent-graph
+    environment:
+      # Reach Tempo on the shared compose network via the lgtm service name.
+      TEMPO_URL: http://lgtm:3200
+      PORT: "8099"
+    ports:
+      - "8099:8099"   # /graph.json + /health, optional for debugging
+    depends_on:
+      - lgtm
+    restart: unless-stopped
 
 volumes:
   lgtm-data:
