@@ -53,31 +53,34 @@
       "title": "Chat sessions",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(copilot_chat_session_count_total)", "legendFormat": "sessions" }
+        { "refId": "A", "expr": "sum(max_over_time(copilot_chat_session_count_total[$__range]))", "legendFormat": "sessions" }
       ]
     },
     {
       "type": "stat",
       "title": "Input tokens",
+      "description": "Per-LLM-call input tokens (gen_ai.client.token.usage). Counts every call, so multi-turn context re-sent each turn is re-counted; expect this to be higher than the per-invocation totals on the Agents dashboard.",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
-      "fieldConfig": { "defaults": { "unit": "short" } },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(gen_ai_client_token_usage_sum{gen_ai_token_type=\"input\", gen_ai_request_model=~\"$model\", job=~\"$source\"})", "legendFormat": "input" }
+        { "refId": "A", "expr": "sum(max_over_time(gen_ai_client_token_usage_sum{gen_ai_token_type=\"input\", gen_ai_request_model=~\"$model\", job=~\"$source\"}[$__range]))", "legendFormat": "input" }
       ]
     },
     {
       "type": "stat",
       "title": "Output tokens",
+      "description": "Per-LLM-call output tokens (gen_ai.client.token.usage).",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
-      "fieldConfig": { "defaults": { "unit": "short" } },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(gen_ai_client_token_usage_sum{gen_ai_token_type=\"output\", gen_ai_request_model=~\"$model\", job=~\"$source\"})", "legendFormat": "output" }
+        { "refId": "A", "expr": "sum(max_over_time(gen_ai_client_token_usage_sum{gen_ai_token_type=\"output\", gen_ai_request_model=~\"$model\", job=~\"$source\"}[$__range]))", "legendFormat": "output" }
       ]
     },
     {
@@ -85,9 +88,10 @@
       "title": "Tool calls",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(copilot_chat_tool_call_count_total)", "legendFormat": "tool calls" }
+        { "refId": "A", "expr": "sum(max_over_time(copilot_chat_tool_call_count_total[$__range]))", "legendFormat": "tool calls" }
       ]
     },
     {
@@ -142,7 +146,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "legend": { "displayMode": "table", "placement": "right", "values": ["value"] } },
       "targets": [
-        { "refId": "A", "expr": "sum by (gen_ai_tool_name) (copilot_chat_tool_call_count_total)", "legendFormat": "{{gen_ai_tool_name}}" }
+        { "refId": "A", "expr": "sum by (gen_ai_tool_name) (max_over_time(copilot_chat_tool_call_count_total[$__range]))", "legendFormat": "{{gen_ai_tool_name}}" }
       ]
     },
     {

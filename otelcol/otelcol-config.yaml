@@ -43,7 +43,12 @@ processors:
   batch:
 
   # Convert the sum connector's delta metrics to cumulative for Prometheus.
+  # max_stale must be large: agents run in bursts and go idle between runs, and
+  # the default (5m) would drop each stream and RESET its cumulative counter,
+  # permanently undercounting cost/tokens. A long window keeps the running total
+  # intact across idle gaps (memory is bounded by the small agent x model count).
   deltatocumulative:
+    max_stale: 720h
 
   transform/copilot_cost:
     error_mode: ignore
@@ -141,12 +146,22 @@ processors:
           - delete_key(attributes, "_r_cr")
           - delete_key(attributes, "_r_cc")
 
-# Project per-span cost / AI-unit attributes into Prometheus metrics (full
-# retention, usable by every dashboard) via the sum connector. Summed over
-# invoke_agent spans (one per invocation) and grouped by model.
+# Project per-span cost / AI-unit / token attributes into Prometheus metrics
+# (full retention, usable by every dashboard) via the sum connector. Summed over
+# invoke_agent spans (one per invocation).
+#
+# IMPORTANT: the sum connector multiplies the summed value by the NUMBER of
+# entries in `attributes` (a known behavior in this connector version). Declaring
+# two attributes doubles the value, three triples it, etc. To keep values
+# correct we give every metric EXACTLY ONE attribute:
+#   * model-scoped metrics  (copilot.cost_usd, copilot.nano_aiu)  -> gen_ai.request.model
+#   * agent-scoped metrics  (copilot.agent_*)                     -> gen_ai.agent.name
+# The `job` (source) label is added automatically from resource attributes, so
+# both label sets remain filterable by source regardless of this list.
 connectors:
   sum:
     spans:
+      # --- Model-scoped (used by the Cost & Sessions dashboard). ---
       copilot.cost_usd:
         source_attribute: gen_ai.usage.cost_usd
         conditions:
@@ -161,6 +176,55 @@ connectors:
         attributes:
           - key: gen_ai.request.model
             default_value: unknown
+      # --- Agent-scoped (used by the Agents dashboard). ---
+      copilot.agent_cost_usd:
+        source_attribute: gen_ai.usage.cost_usd
+        conditions:
+          - 'attributes["gen_ai.operation.name"] == "invoke_agent" and attributes["gen_ai.usage.cost_usd"] != nil'
+        attributes:
+          - key: gen_ai.agent.name
+            default_value: unknown
+      copilot.agent_tokens_input:
+        source_attribute: gen_ai.usage.input_tokens
+        conditions:
+          - 'attributes["gen_ai.operation.name"] == "invoke_agent" and attributes["gen_ai.usage.input_tokens"] != nil'
+        attributes:
+          - key: gen_ai.agent.name
+            default_value: unknown
+      copilot.agent_tokens_output:
+        source_attribute: gen_ai.usage.output_tokens
+        conditions:
+          - 'attributes["gen_ai.operation.name"] == "invoke_agent" and attributes["gen_ai.usage.output_tokens"] != nil'
+        attributes:
+          - key: gen_ai.agent.name
+            default_value: unknown
+      copilot.agent_tokens_cache_read:
+        source_attribute: gen_ai.usage.cache_read.input_tokens
+        conditions:
+          - 'attributes["gen_ai.operation.name"] == "invoke_agent" and attributes["gen_ai.usage.cache_read.input_tokens"] != nil'
+        attributes:
+          - key: gen_ai.agent.name
+            default_value: unknown
+      copilot.agent_tokens_cache_write:
+        source_attribute: gen_ai.usage.cache_creation.input_tokens
+        conditions:
+          - 'attributes["gen_ai.operation.name"] == "invoke_agent" and attributes["gen_ai.usage.cache_creation.input_tokens"] != nil'
+        attributes:
+          - key: gen_ai.agent.name
+            default_value: unknown
+
+  # Per-agent R.E.D metrics (calls, duration) keyed on gen_ai.agent.name.
+  # Query with gen_ai_operation_name="invoke_agent" for agent invocations.
+  spanmetrics:
+    namespace: copilot.agent
+    histogram:
+      unit: s
+    dimensions:
+      - name: gen_ai.agent.name
+        default: unknown
+      - name: gen_ai.operation.name
+        default: unknown
+    exclude_dimensions: ['span.name', 'collector.instance.id']
 
 exporters:
   otlphttp/metrics:
@@ -192,7 +256,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [transform/copilot_cost, batch]
-      exporters: [otlphttp/traces, sum]
+      exporters: [otlphttp/traces, sum, spanmetrics]
     metrics:
       receivers: [otlp, prometheus/collector]
       processors: [batch]
@@ -200,6 +264,10 @@ service:
     metrics/cost:
       receivers: [sum]
       processors: [deltatocumulative, batch]
+      exporters: [otlphttp/metrics]
+    metrics/spanmetrics:
+      receivers: [spanmetrics]
+      processors: [batch]
       exporters: [otlphttp/metrics]
     logs:
       receivers: [otlp]

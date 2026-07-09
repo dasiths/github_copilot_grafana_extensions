@@ -39,9 +39,10 @@
       "title": "Agent invocations",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(copilot_chat_agent_invocation_duration_count)", "legendFormat": "invocations" }
+        { "refId": "A", "expr": "sum(max_over_time(copilot_chat_agent_invocation_duration_count[$__range]))", "legendFormat": "invocations" }
       ]
     },
     {
@@ -49,9 +50,10 @@
       "title": "Lines of code (accepted edits)",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(copilot_chat_lines_of_code_count_total)", "legendFormat": "lines" }
+        { "refId": "A", "expr": "sum(max_over_time(copilot_chat_lines_of_code_count_total[$__range]))", "legendFormat": "lines" }
       ]
     },
     {
@@ -59,9 +61,10 @@
       "title": "Edit decisions",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(copilot_chat_edit_acceptance_count_total)", "legendFormat": "decisions" }
+        { "refId": "A", "expr": "sum(max_over_time(copilot_chat_edit_acceptance_count_total[$__range]))", "legendFormat": "decisions" }
       ]
     },
     {
@@ -69,9 +72,10 @@
       "title": "User feedback votes",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(copilot_chat_user_feedback_count_total)", "legendFormat": "votes" }
+        { "refId": "A", "expr": "sum(max_over_time(copilot_chat_user_feedback_count_total[$__range]))", "legendFormat": "votes" }
       ]
     },
     {
@@ -82,7 +86,7 @@
       "fieldConfig": { "defaults": { "unit": "short" } },
       "options": { "orientation": "horizontal", "showValue": "auto", "legend": { "showLegend": false } },
       "targets": [
-        { "refId": "A", "expr": "sum by (gen_ai_tool_name) (copilot_chat_tool_call_count_total{gen_ai_tool_name=~\"$tool\"})", "legendFormat": "{{gen_ai_tool_name}}", "format": "table", "instant": true }
+        { "refId": "A", "expr": "sum by (gen_ai_tool_name) (max_over_time(copilot_chat_tool_call_count_total{gen_ai_tool_name=~\"$tool\"}[$__range]))", "legendFormat": "{{gen_ai_tool_name}}", "format": "table", "instant": true }
       ]
     },
     {

@@ -7,3 +7,6 @@ data/
 
 # OS / editor cruft
 .DS_Store
+
+# IDE / editor cruft
+.copilot-tracking

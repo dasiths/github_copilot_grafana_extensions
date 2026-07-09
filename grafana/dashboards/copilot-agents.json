@@ -1,0 +1,234 @@
+{
+  "uid": "copilot-agents",
+  "title": "GitHub Copilot - Agents",
+  "tags": ["copilot", "genai", "otel", "agents"],
+  "editable": true,
+  "schemaVersion": 39,
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Prometheus",
+        "type": "datasource",
+        "query": "prometheus",
+        "hide": 0,
+        "current": {},
+        "refresh": 1
+      },
+      {
+        "name": "source",
+        "label": "Source (service)",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(copilot_agent_calls_total, job)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": { "text": "All", "value": "$__all" },
+        "refresh": 2,
+        "sort": 1
+      },
+      {
+        "name": "agent",
+        "label": "Agent",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(copilot_agent_calls_total{gen_ai_operation_name=\"invoke_agent\"}, gen_ai_agent_name)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": { "text": "All", "value": "$__all" },
+        "refresh": 2,
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Per-agent totals (spanmetrics + cost connectors)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Agents",
+      "description": "Distinct gen_ai.agent.name emitting invoke_agent spans.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        { "refId": "A", "expr": "count(count by (gen_ai_agent_name) (max_over_time(copilot_agent_calls_total{gen_ai_operation_name=\"invoke_agent\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range])))", "legendFormat": "agents" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Agent invocations",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "sum(max_over_time(copilot_agent_calls_total{gen_ai_operation_name=\"invoke_agent\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]))", "legendFormat": "invocations" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Est. cost (USD)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 2 } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "sum(max_over_time(copilot_agent_cost_usd_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]))", "legendFormat": "cost" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Tool calls",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "sum(max_over_time(copilot_agent_calls_total{gen_ai_operation_name=\"execute_tool\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]))", "legendFormat": "tool calls" }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Invocations by agent",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": { "orientation": "horizontal", "showValue": "auto", "legend": { "showLegend": false } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (gen_ai_agent_name) (max_over_time(copilot_agent_calls_total{gen_ai_operation_name=\"invoke_agent\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]))", "legendFormat": "{{gen_ai_agent_name}}", "format": "table", "instant": true }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Cost (USD) by agent",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 2 } },
+      "options": { "orientation": "horizontal", "showValue": "auto", "legend": { "showLegend": false } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (gen_ai_agent_name) (max_over_time(copilot_agent_cost_usd_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]))", "legendFormat": "{{gen_ai_agent_name}}", "format": "table", "instant": true }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Invocation duration p95 by agent",
+      "description": "copilot_agent_duration (spanmetrics) for invoke_agent spans, seconds.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, gen_ai_agent_name) (rate(copilot_agent_duration_seconds_bucket{gen_ai_operation_name=\"invoke_agent\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__rate_interval])))", "legendFormat": "{{gen_ai_agent_name}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Agent activity (invocations / interval)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 40, "stacking": { "mode": "normal" } } } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (gen_ai_agent_name) (increase(copilot_agent_calls_total{gen_ai_operation_name=\"invoke_agent\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__rate_interval]))", "legendFormat": "{{gen_ai_agent_name}}" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Token usage by agent (sum connectors)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Input tokens",
+      "description": "Per-invocation input tokens (summed gen_ai.usage.input_tokens over invoke_agent spans). Lower than the Overview dashboard, which counts every LLM call and so re-counts context re-sent each turn.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "sum(max_over_time(copilot_agent_tokens_input_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]))", "legendFormat": "input" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Output tokens",
+      "description": "Per-invocation output tokens (summed gen_ai.usage.output_tokens over invoke_agent spans).",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "sum(max_over_time(copilot_agent_tokens_output_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]))", "legendFormat": "output" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Cache read tokens",
+      "description": "Summed gen_ai.usage.cache_read.input_tokens over invoke_agent spans.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "sum(max_over_time(copilot_agent_tokens_cache_read_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]))", "legendFormat": "cache read" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Cache write tokens",
+      "description": "Summed gen_ai.usage.cache_creation.input_tokens over invoke_agent spans.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "sum(max_over_time(copilot_agent_tokens_cache_write_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]))", "legendFormat": "cache write" }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Input tokens by agent",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 27 },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": { "orientation": "horizontal", "showValue": "auto", "legend": { "showLegend": false } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (gen_ai_agent_name) (max_over_time(copilot_agent_tokens_input_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]))", "legendFormat": "{{gen_ai_agent_name}}", "format": "table", "instant": true }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Output tokens by agent",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 27 },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": { "orientation": "horizontal", "showValue": "auto", "legend": { "showLegend": false } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (gen_ai_agent_name) (max_over_time(copilot_agent_tokens_output_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]))", "legendFormat": "{{gen_ai_agent_name}}", "format": "table", "instant": true }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Cumulative tokens by agent (input + output)",
+      "description": "Running total of input + output tokens per agent (raw counters). Cumulative rather than a rate, so single-run agents (which emit their whole token count in one burst) still appear instead of being missed by rate/increase.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 36 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 10 } } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (gen_ai_agent_name) ({__name__=~\"copilot_agent_tokens_(input|output)_total\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"})", "legendFormat": "{{gen_ai_agent_name}}" }
+      ]
+    }
+  ]
+}
