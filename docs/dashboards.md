@@ -49,7 +49,8 @@ The Agents dashboard is metric-based and breaks activity down by
 per-agent cost and token barcharts, invocation duration p95, and activity over
 time. It is most useful with multi-agent CLI runs, where subagents (invoked via
 the `task` tool) each report under their own agent name. The metrics behind it,
-and the reason per-agent totals use `max_over_time`, are documented in
+and the windowed-delta query that keeps its totals in step with the Cost &
+Sessions dashboard, are documented in
 [Cost estimation and Prometheus metrics](cost-and-metrics.md#cost-as-a-prometheus-metric).
 
 ## Metric naming note

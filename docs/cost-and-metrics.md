@@ -59,18 +59,32 @@ Filter `gen_ai_operation_name="invoke_agent"` for agent invocations,
 `gen_ai_agent_name` (for example `GitHub Copilot Chat`, or CLI subagents like
 `rpiv-research`).
 
-> These `sum`-connector counters are cumulative but stop updating when an agent
-> goes idle, so Prometheus marks them *stale* after ~5 minutes. Dashboard panels
-> that show per-agent totals use `max_over_time(<metric>[$__range])` instead of
-> an instant read, so idle agents still appear across the selected time window.
+> These `sum`-connector counters are cumulative and (with `max_stale: 720h`,
+> below) never reset, so a plain `max_over_time(<metric>[$__range])` returns the
+> **all-time** running total, not the total for the selected range. That made the
+> Agents dashboard diverge from the range-windowed [Cost & Sessions](dashboards.md#github-copilot---cost--sessions)
+> dashboard. The Agents per-agent totals instead compute a **windowed delta**:
+>
+> ```promql
+> max_over_time(<metric>[$__range])
+>   - (max_over_time(<metric>[$__range] offset $__range)
+>      or (max_over_time(<metric>[$__range]) * 0))
+> ```
+>
+> This is "value now minus value one range ago", so it reflects only the selected
+> window and matches the Tempo cost for the same range. Unlike `increase()` (which
+> undercounts bursty counters and drops one-shot agents to zero), it stays correct
+> for intermittent agents, and the `or (... * 0)` term seeds a zero baseline so an
+> agent that first appears inside the window still counts. Agents with no activity
+> in the window correctly read `0`.
 
 > The `sum` connector emits *delta* metrics that the `deltatocumulative`
 > processor turns into cumulative counters for Prometheus. Its default
 > `max_stale` (5 minutes) would **drop and reset** a stream once its agent goes
 > idle, permanently undercounting cost and tokens for bursty/intermittent
 > agents. The collector config sets `max_stale: 720h` so the running totals
-> survive idle gaps. If per-agent totals ever read *lower* than the same
-> metric's `max_over_time`, a reset has occurred — check this setting.
+> survive idle gaps, which is also what lets the windowed-delta query above use a
+> reliable `offset $__range` baseline.
 
 For example, cost added per interval by model:
 `sum by (gen_ai_request_model) (increase(copilot_cost_usd_total[$__rate_interval]))`.
