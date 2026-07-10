@@ -14,10 +14,11 @@ between them while keeping the selected time range.
 |-----------|------|--------|---------|------------|
 | GitHub Copilot - Overview | [copilot-overview.json](../grafana/dashboards/copilot-overview.json) | Metrics (Prometheus) | Both (CLI + VS Code) | **Home dashboard.** Sessions, input/output tokens, token rate by model, LLM call duration, time to first token/chunk, tool calls. Tool calls, duration, and time-to-first are cross-surface; token/session **counts** come from VS Code metrics (CLI token detail is on the span dashboards). Has a **Source (service)** filter |
 | GitHub Copilot - Tools & Agent Activity | [copilot-tools-activity.json](../grafana/dashboards/copilot-tools-activity.json) | Metrics (Prometheus) | VS Code (+ CLI tool calls) | Tool call counts/latency (cross-surface), plus VS Code editor metrics with no CLI equivalent: edit accept/reject decisions, lines of code changed, agent invocation duration |
-| GitHub Copilot - Cost & Sessions | [copilot-cost-sessions.json](../grafana/dashboards/copilot-cost-sessions.json) | Spans (Tempo) | Both (CLI + VS Code) | Estimated USD cost + tokens up top, then Sessions / Agent invocations / Requests tables (tokens, cache, `cost_usd`), with **Source**, **Model**, and **Session** filters |
+| GitHub Copilot - Cost & Sessions | [copilot-cost-sessions.json](../grafana/dashboards/copilot-cost-sessions.json) | Spans (Tempo) | Both (CLI + VS Code) | Estimated USD cost + tokens up top, then Sessions / Agent invocations / Requests tables (tokens, cache, `cost_usd`), with **Source**, **Model**, **Repository**, **Branch**, and **Session** filters |
 | GitHub Copilot - Agents | [copilot-agents.json](../grafana/dashboards/copilot-agents.json) | Metrics (Prometheus) | Both (CLI + VS Code) | Per-agent breakdown (`gen_ai.agent.name`): invocations, cost, tokens, duration p95, and activity over time. Most useful with multi-agent CLI runs (subagents via the `task` tool) |
-| GitHub Copilot - Agent Graph | [copilot-agent-graph.json](../grafana/dashboards/copilot-agent-graph.json) | Traces via the `agent-graph` sidecar (Infinity) | Both (CLI + VS Code) | Node Graph of the agent topology: nodes = agents, directed edges = parent agent → subagent, with per-node invocations, cost, tokens, and tool calls |
-| GitHub Copilot - Agent Timeline | [copilot-agent-timeline.json](../grafana/dashboards/copilot-agent-timeline.json) | Traces via the `agent-graph` sidecar (Infinity) | Both (CLI + VS Code) | Conversation-first view: per-conversation summary table (duration, model/tool calls, agents, cost, **failures**) with a **Failures only** toggle, plus a per-agent swim-lane timeline |
+| GitHub Copilot - Agent Graph | [copilot-agent-graph.json](../grafana/dashboards/copilot-agent-graph.json) | Traces via the `agent-insights` sidecar (Infinity) | Both (CLI + VS Code) | Node Graph of the agent topology: nodes = agents, directed edges = parent agent → subagent, with per-node invocations, cost, tokens, and tool calls |
+| GitHub Copilot - Agent Timeline | [copilot-agent-timeline.json](../grafana/dashboards/copilot-agent-timeline.json) | Traces via the `agent-insights` sidecar (Infinity) | Both (CLI + VS Code) | Conversation-first view: per-conversation summary table (duration, model/tool calls, agents, cost, **failures**) with a **Failures only** toggle and **Repository** / **Branch** filters, plus a per-agent swim-lane timeline |
+| GitHub Copilot - Cost by Repo & Branch | [copilot-branches.json](../grafana/dashboards/copilot-branches.json) | Traces via the `agent-insights` sidecar (Infinity) | Both (CLI + VS Code) | Cost, tokens, cache reuse, and sessions grouped by git **repository** (primary) and **branch** (secondary), with a cost bar chart, a **cost-over-time** series, and a filterable repo/branch table that links into the Agent Timeline |
 
 VS Code and the CLI emit the **same `gen_ai.*` token and duration metrics**, and
 the metric dashboards union the surface-specific names where they differ
@@ -33,7 +34,7 @@ lives on the span-based dashboards. A dedicated CLI dashboard is not needed.
 > **CLI agent naming:** the CLI's top-level agent leaves `gen_ai.agent.name`
 > unset and only sets `gen_ai.agent.id` (`github.copilot.default`). The collector
 > ([otelcol/otelcol-config.yaml](../otelcol/otelcol-config.yaml)) and the
-> `agent-graph` sidecar both fall back to the id (surfaced as **Copilot CLI**) so
+> `agent-insights` sidecar both fall back to the id (surfaced as **Copilot CLI**) so
 > CLI activity is attributed to a named agent instead of `unknown`.
 
 ## GitHub Copilot - Cost & Sessions
@@ -45,7 +46,22 @@ tokens**. Cost, cache tokens, and per-session detail live only on trace spans
 figure is computed.
 
 - The **Session** variable filters by `gen_ai.conversation.id` (regex; copy an id
-  from the table). **Source** and **Model** filter by service and model.
+  from the table, or click a **Session** cell in the Sessions table to filter to
+  just that session — this scopes the invocations and requests tables too). Use
+  the **Clear session filter** link in the dashboard's top bar (or reset the
+  Session textbox to `.*`) to clear the filter. **Source** and **Model** filter
+  by service and model.
+- The **Repository** and **Branch** variables scope the cost/token/session tables
+  to one git repo or branch. Their options come from the `agent-insights` sidecar's
+  `/branches.json`, and each value is a ready-made TraceQL predicate that
+  coalesces the two surfaces (VS Code's `github.copilot.git.branch` span
+  attribute OR the CLI's `vcs.ref.head.name` resource attribute). With **All**
+  selected the predicate collapses to `true`, so totals are unfiltered and match
+  the pre-filter behavior. The **Requests** table (chat spans) is intentionally
+  not branch-scoped, because the branch lives on the `invoke_agent` span, not on
+  child `chat` spans. The `unknown` bucket (telemetry with no git enrichment) is
+  omitted from these dropdowns because Tempo cannot search for an absent
+  attribute; use the **Cost by Repo & Branch** dashboard to see it.
 - The telemetry is hierarchical: a **session** (`gen_ai.conversation.id`) contains
   one or more **agent invocations** (`invoke_agent` spans, one per user message),
   each of which makes several **requests** (`chat` spans, one LLM call each). The
@@ -87,7 +103,7 @@ invoke_agent (parent agent)
         └── invoke_agent (subagent)
 ```
 
-The [agent-graph](../agent-graph/) sidecar walks each Tempo trace for the
+The [agent-insights](../agent-insights/) sidecar walks each Tempo trace for the
 selected time range, derives that hop into directed edges, aggregates per-agent
 stats, and serves them as `{"nodes":[...],"edges":[...]}` JSON. The
 [Grafana Infinity datasource](../grafana/provisioning/datasources/infinity.yaml)
@@ -125,6 +141,12 @@ failures, the unit of investigation.
   (spans with `STATUS_CODE_ERROR`, highlighted red), duration, cost, and tokens.
 - **Failures only** — the **View** variable adds `failures_only=1` to the sidecar
   request so the table shows only conversations that contain a failure.
+- **Repository / Branch** — the **Repository** and **Branch** variables (options
+  from the sidecar's `/branches.json`) scope the whole dashboard to one git repo
+  or branch. They are passed to the sidecar as `?repo=&branch=`, which filters
+  each trace by its coalesced repo/branch before aggregating. **All** leaves them
+  empty (no filter). Unlike the Cost & Sessions filters, `unknown` is selectable
+  here because the sidecar matches it by exact name server-side.
 - **Click to filter** — click a conversation id in the table to filter the
   whole dashboard (table, summary cards, swim lanes, and traces) to that
   conversation (a table data link sets the `conversation` variable); the **Show
@@ -143,14 +165,14 @@ failures, the unit of investigation.
   (matched on `gen_ai.conversation.id`); click a Trace ID to open the full span
   **waterfall**.
 
-The data comes from the [agent-graph](../agent-graph/) sidecar, which serves
+The data comes from the [agent-insights](../agent-insights/) sidecar, which serves
 these JSON endpoints consumed via Infinity, all windowed to the dashboard time
 range (`?from=&to=` unix seconds):
 
 | Endpoint | Feeds | Shape |
 |----------|-------|-------|
-| `/conversations.json` (opt. `?conversation=`, `?failures_only=1`) | Summary cards + Conversations table | `{"conversations": [ ... ]}` |
-| `/timeline_states.json?conversation=<id>&detail=1` | Swim-lane State timeline | wide `{"states": [ {"time", "<agent> · <cat>": "invoke"/"llm"/"tool"/"error"/null } ]}` |
+| `/conversations.json` (opt. `?conversation=`, `?failures_only=1`, `?repo=`, `?branch=`) | Summary cards + Conversations table | `{"conversations": [ ... ]}` |
+| `/timeline_states.json?conversation=<id>&detail=1` (opt. `?repo=`, `?branch=`) | Swim-lane State timeline | wide `{"states": [ {"time", "<agent> · <cat>": "invoke"/"llm"/"tool"/"error"/null } ]}` |
 | `/timeline.json?conversation=<id>` | raw per-span intervals | `{"timeline": [ ... ]}` |
 | `/graph.json` | Agent Graph Node Graph | `{"nodes": [], "edges": []}` |
 
@@ -160,6 +182,61 @@ datasource (not the sidecar), via the Traces panel's TraceQL query.
 The swim lanes use the built-in State timeline panel rather than a Gantt plugin,
 because the community Gantt panel is unmaintained and does not load on current
 Grafana.
+
+## GitHub Copilot - Cost by Repo & Branch
+
+This dashboard answers "**where is my Copilot spend going?**" by attributing
+cost, tokens, cache reuse, and sessions to the git **repository** (primary
+grouping) and **branch** (secondary grouping) the work happened on.
+
+- **Summary cards** — totals across every repo/branch in range: cost, input and
+  output tokens, cache-read tokens, sessions, and invocations.
+- **Cost by repo · branch** — a horizontal bar chart, one bar per `repo · branch`,
+  colored by cost, so heavy branches stand out at a glance.
+- **Cost over time by repo · branch** — a stacked bar time series of cost per
+  time bucket, one series per `repo · branch`, to spot *when* a branch got
+  expensive. Bucket width scales with the selected range.
+- **Repos & branches table** — one row per `repo · branch`, with the agents
+  involved, invocations, sessions (distinct `gen_ai.conversation.id`), cost, and
+  token breakdown. Each column has a **filter icon**, so you can filter to a
+  single repository or branch; the table footer sums the visible rows. **Click a
+  branch** to open the [Agent Timeline](#github-copilot---agent-timeline) scoped
+  to that repo and branch (a data link sets its `repo`/`branch` variables).
+
+The repo/branch key is **coalesced across surfaces** by the
+[agent-insights](../agent-insights/) sidecar, because the two Copilot surfaces tag it
+differently:
+
+- **VS Code** sets it per `invoke_agent` **span**: `github.copilot.git.repository`
+  (a clone URL) and `github.copilot.git.branch`. No setup required.
+- **The CLI** sets it on the OTel **resource** (`vcs.repository.name` /
+  `vcs.ref.head.name`) once [the enrichment script](../scripts/) is sourced —
+  `_index_spans` in the sidecar discards resource attributes, so `build_branches`
+  reads `trace["batches"][*]["resource"]` directly for CLI rows.
+
+The sidecar normalizes both repo shapes to a bare repo name (basename minus
+`.git`) so the same repository groups identically no matter which surface
+produced the telemetry. Rows with no git enrichment (a CLI run before the script
+is sourced) fall into **`unknown · unknown`**.
+
+The data comes from two windowed Infinity endpoints:
+
+| Endpoint | Feeds | Shape |
+|----------|-------|-------|
+| `/branches.json` (opt. `?exclude_unknown=1`) | Summary cards + bar chart + table (and the Cost & Sessions / Agent Timeline filter dropdowns) | `{"branches": [ {"repo", "branch", "repo_branch", "repo_clause", "branch_clause", "agents", "sessions", "invocations", "cost_usd", "tokens_in", "tokens_out", "cache_read_tokens", ... } ]}` |
+| `/branch_series.json` | Cost-over-time series | wide `{"series": [ {"time", "<repo · branch>": cost, ... } ], "lanes": [ ... ]}` |
+
+The `repo_clause` / `branch_clause` fields are prebuilt TraceQL predicates the
+Cost & Sessions filters use as variable values (see that dashboard above);
+`?exclude_unknown=1` drops the non-filterable `unknown` bucket for those
+dropdowns.
+
+> **Why a sidecar and not TraceQL?** A single TraceQL query cannot coalesce a
+> branch that lives on a **span attribute** (VS Code) with one that lives on a
+> **resource attribute** (CLI). The sidecar merges both into one grouping key in
+> Python, and does it without touching the collector — so no `deltatocumulative`
+> metric reset. See [telemetry.md](telemetry.md) for how the CLI branch is set
+> and its per-launch freshness boundary.
 
 ## Metric naming note
 

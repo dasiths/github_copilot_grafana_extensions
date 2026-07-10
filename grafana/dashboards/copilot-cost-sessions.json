@@ -5,6 +5,7 @@
   "editable": true,
   "schemaVersion": 39,
   "links": [
+    { "title": "Clear session filter", "type": "link", "url": "/d/copilot-cost-sessions/?var-session=.*&${__url_time_range}", "keepTime": true, "includeVars": false, "targetBlank": false, "icon": "external link", "tooltip": "Reset the Session filter to show all sessions" },
     { "title": "Dashboards", "type": "dashboards", "tags": ["copilot"], "asDropdown": true, "includeVars": false, "keepTime": true, "targetBlank": false, "icon": "apps" }
   ],
   "timezone": "browser",
@@ -58,6 +59,68 @@
         "sort": 1
       },
       {
+        "name": "repoSel",
+        "label": "Repository",
+        "description": "Scope cost/session tables to one git repository. All = every repo (unfiltered). The Requests table is not branch-scoped (branch lives on agent invocations).",
+        "type": "query",
+        "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+        "query": {
+          "queryType": "infinity",
+          "refId": "variable",
+          "infinityQuery": {
+            "refId": "variable",
+            "type": "json",
+            "source": "url",
+            "parser": "backend",
+            "url": "http://agent-insights:8099/branches.json?exclude_unknown=1&from=${__from:date:seconds}&to=${__to:date:seconds}",
+            "url_options": { "method": "GET", "data": "" },
+            "root_selector": "branches",
+            "format": "table",
+            "columns": [
+              { "selector": "repo", "text": "__text", "type": "string" },
+              { "selector": "repo_clause", "text": "__value", "type": "string" }
+            ]
+          }
+        },
+        "includeAll": true,
+        "allValue": "true",
+        "current": { "text": "All", "value": "$__all" },
+        "multi": false,
+        "refresh": 2,
+        "sort": 1
+      },
+      {
+        "name": "branchSel",
+        "label": "Branch",
+        "description": "Scope cost/session tables to one git branch. All = every branch (unfiltered).",
+        "type": "query",
+        "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+        "query": {
+          "queryType": "infinity",
+          "refId": "variable",
+          "infinityQuery": {
+            "refId": "variable",
+            "type": "json",
+            "source": "url",
+            "parser": "backend",
+            "url": "http://agent-insights:8099/branches.json?exclude_unknown=1&from=${__from:date:seconds}&to=${__to:date:seconds}",
+            "url_options": { "method": "GET", "data": "" },
+            "root_selector": "branches",
+            "format": "table",
+            "columns": [
+              { "selector": "branch", "text": "__text", "type": "string" },
+              { "selector": "branch_clause", "text": "__value", "type": "string" }
+            ]
+          }
+        },
+        "includeAll": true,
+        "allValue": "true",
+        "current": { "text": "All", "value": "$__all" },
+        "multi": false,
+        "refresh": 2,
+        "sort": 1
+      },
+      {
         "name": "session",
         "label": "Session (conversation.id, regex)",
         "description": "Filter to one or more sessions. Copy an id from the table. Default .* = all.",
@@ -84,7 +147,7 @@
       "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 2 } },
       "options": { "reduceOptions": { "values": false, "calcs": ["sum"] }, "colorMode": "value", "graphMode": "none" },
       "targets": [
-        { "refId": "A", "datasource": { "type": "tempo", "uid": "${tempoDs}" }, "queryType": "traceql", "tableType": "spans", "limit": 500, "query": "{ name=~\"invoke_agent.*\" && resource.service.name=~\"${source:pipe}\" && span.gen_ai.request.model=~\"${model:pipe}\" && span.gen_ai.conversation.id=~\"$session\" } | select(span.gen_ai.usage.cost_usd)" }
+        { "refId": "A", "datasource": { "type": "tempo", "uid": "${tempoDs}" }, "queryType": "traceql", "tableType": "spans", "limit": 500, "query": "{ name=~\"invoke_agent.*\" && resource.service.name=~\"${source:pipe}\" && span.gen_ai.request.model=~\"${model:pipe}\" && span.gen_ai.conversation.id=~\"$session\" && ${repoSel} && ${branchSel} } | select(span.gen_ai.usage.cost_usd)" }
       ],
       "transformations": [
         { "id": "filterFieldsByName", "options": { "include": { "names": ["gen_ai.usage.cost_usd"] } } },
@@ -99,7 +162,7 @@
       "fieldConfig": { "defaults": { "unit": "short" } },
       "options": { "reduceOptions": { "values": false, "calcs": ["sum"] }, "colorMode": "value", "graphMode": "none" },
       "targets": [
-        { "refId": "A", "datasource": { "type": "tempo", "uid": "${tempoDs}" }, "queryType": "traceql", "tableType": "spans", "limit": 500, "query": "{ name=~\"invoke_agent.*\" && resource.service.name=~\"${source:pipe}\" && span.gen_ai.request.model=~\"${model:pipe}\" && span.gen_ai.conversation.id=~\"$session\" } | select(span.gen_ai.usage.input_tokens)" }
+        { "refId": "A", "datasource": { "type": "tempo", "uid": "${tempoDs}" }, "queryType": "traceql", "tableType": "spans", "limit": 500, "query": "{ name=~\"invoke_agent.*\" && resource.service.name=~\"${source:pipe}\" && span.gen_ai.request.model=~\"${model:pipe}\" && span.gen_ai.conversation.id=~\"$session\" && ${repoSel} && ${branchSel} } | select(span.gen_ai.usage.input_tokens)" }
       ],
       "transformations": [
         { "id": "filterFieldsByName", "options": { "include": { "names": ["gen_ai.usage.input_tokens"] } } },
@@ -114,7 +177,7 @@
       "fieldConfig": { "defaults": { "unit": "short" } },
       "options": { "reduceOptions": { "values": false, "calcs": ["sum"] }, "colorMode": "value", "graphMode": "none" },
       "targets": [
-        { "refId": "A", "datasource": { "type": "tempo", "uid": "${tempoDs}" }, "queryType": "traceql", "tableType": "spans", "limit": 500, "query": "{ name=~\"invoke_agent.*\" && resource.service.name=~\"${source:pipe}\" && span.gen_ai.request.model=~\"${model:pipe}\" && span.gen_ai.conversation.id=~\"$session\" } | select(span.gen_ai.usage.output_tokens)" }
+        { "refId": "A", "datasource": { "type": "tempo", "uid": "${tempoDs}" }, "queryType": "traceql", "tableType": "spans", "limit": 500, "query": "{ name=~\"invoke_agent.*\" && resource.service.name=~\"${source:pipe}\" && span.gen_ai.request.model=~\"${model:pipe}\" && span.gen_ai.conversation.id=~\"$session\" && ${repoSel} && ${branchSel} } | select(span.gen_ai.usage.output_tokens)" }
       ],
       "transformations": [
         { "id": "filterFieldsByName", "options": { "include": { "names": ["gen_ai.usage.output_tokens"] } } },
@@ -129,7 +192,7 @@
       "fieldConfig": { "defaults": { "unit": "short" } },
       "options": { "reduceOptions": { "values": false, "calcs": ["sum"] }, "colorMode": "value", "graphMode": "none" },
       "targets": [
-        { "refId": "A", "datasource": { "type": "tempo", "uid": "${tempoDs}" }, "queryType": "traceql", "tableType": "spans", "limit": 500, "query": "{ name=~\"invoke_agent.*\" && resource.service.name=~\"${source:pipe}\" && span.gen_ai.request.model=~\"${model:pipe}\" && span.gen_ai.conversation.id=~\"$session\" } | select(span.gen_ai.usage.cache_read.input_tokens)" }
+        { "refId": "A", "datasource": { "type": "tempo", "uid": "${tempoDs}" }, "queryType": "traceql", "tableType": "spans", "limit": 500, "query": "{ name=~\"invoke_agent.*\" && resource.service.name=~\"${source:pipe}\" && span.gen_ai.request.model=~\"${model:pipe}\" && span.gen_ai.conversation.id=~\"$session\" && ${repoSel} && ${branchSel} } | select(span.gen_ai.usage.cache_read.input_tokens)" }
       ],
       "transformations": [
         { "id": "filterFieldsByName", "options": { "include": { "names": ["gen_ai.usage.cache_read.input_tokens"] } } },
@@ -144,7 +207,7 @@
       "fieldConfig": { "defaults": { "unit": "short" } },
       "options": { "reduceOptions": { "values": false, "calcs": ["sum"] }, "colorMode": "value", "graphMode": "none" },
       "targets": [
-        { "refId": "A", "datasource": { "type": "tempo", "uid": "${tempoDs}" }, "queryType": "traceql", "tableType": "spans", "limit": 500, "query": "{ name=~\"invoke_agent.*\" && resource.service.name=~\"${source:pipe}\" && span.gen_ai.request.model=~\"${model:pipe}\" && span.gen_ai.conversation.id=~\"$session\" } | select(span.gen_ai.usage.cache_creation.input_tokens)" }
+        { "refId": "A", "datasource": { "type": "tempo", "uid": "${tempoDs}" }, "queryType": "traceql", "tableType": "spans", "limit": 500, "query": "{ name=~\"invoke_agent.*\" && resource.service.name=~\"${source:pipe}\" && span.gen_ai.request.model=~\"${model:pipe}\" && span.gen_ai.conversation.id=~\"$session\" && ${repoSel} && ${branchSel} } | select(span.gen_ai.usage.cache_creation.input_tokens)" }
       ],
       "transformations": [
         { "id": "filterFieldsByName", "options": { "include": { "names": ["gen_ai.usage.cache_creation.input_tokens"] } } },
@@ -159,7 +222,7 @@
       "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
       "options": { "reduceOptions": { "values": false, "calcs": ["count"] }, "colorMode": "value", "graphMode": "none" },
       "targets": [
-        { "refId": "A", "datasource": { "type": "tempo", "uid": "${tempoDs}" }, "queryType": "traceql", "tableType": "spans", "limit": 500, "query": "{ name=~\"invoke_agent.*\" && resource.service.name=~\"${source:pipe}\" && span.gen_ai.request.model=~\"${model:pipe}\" && span.gen_ai.conversation.id=~\"$session\" } | select(span.gen_ai.conversation.id, span.gen_ai.usage.input_tokens)" }
+        { "refId": "A", "datasource": { "type": "tempo", "uid": "${tempoDs}" }, "queryType": "traceql", "tableType": "spans", "limit": 500, "query": "{ name=~\"invoke_agent.*\" && resource.service.name=~\"${source:pipe}\" && span.gen_ai.request.model=~\"${model:pipe}\" && span.gen_ai.conversation.id=~\"$session\" && ${repoSel} && ${branchSel} } | select(span.gen_ai.conversation.id, span.gen_ai.usage.input_tokens)" }
       ],
       "transformations": [
         { "id": "convertFieldType", "options": { "conversions": [ { "targetField": "gen_ai.usage.input_tokens", "destinationType": "number" } ] } },
@@ -176,10 +239,10 @@
       "description": "One row per session (gen_ai.conversation.id). Tokens/cost summed across the session's invocations; 'input_tokens (count)' = number of invocations. Cost is populated only for spans ingested after the collector was configured.",
       "datasource": { "type": "tempo", "uid": "${tempoDs}" },
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 14 },
-      "fieldConfig": { "defaults": {}, "overrides": [ { "matcher": { "id": "byName", "options": "Cost (USD)" }, "properties": [ { "id": "unit", "value": "currencyUSD" }, { "id": "decimals", "value": 2 } ] } ] },
+      "fieldConfig": { "defaults": {}, "overrides": [ { "matcher": { "id": "byName", "options": "Session" }, "properties": [ { "id": "links", "value": [ { "title": "Filter to this session", "url": "/d/copilot-cost-sessions/?var-session=${__value.raw}&${__url_time_range}", "targetBlank": false } ] } ] }, { "matcher": { "id": "byName", "options": "Cost (USD)" }, "properties": [ { "id": "unit", "value": "currencyUSD" }, { "id": "decimals", "value": 2 } ] } ] },
       "options": { "showHeader": true, "footer": { "show": true, "reducer": ["sum"], "countRows": false } },
       "targets": [
-        { "refId": "A", "datasource": { "type": "tempo", "uid": "${tempoDs}" }, "queryType": "traceql", "tableType": "spans", "limit": 500, "query": "{ name=~\"invoke_agent.*\" && resource.service.name=~\"${source:pipe}\" && span.gen_ai.request.model=~\"${model:pipe}\" && span.gen_ai.conversation.id=~\"$session\" } | select(resource.service.name, span.gen_ai.request.model, span.gen_ai.conversation.id, span.gen_ai.usage.cost_usd, span.gen_ai.usage.input_tokens, span.gen_ai.usage.output_tokens, span.gen_ai.usage.cache_read.input_tokens, span.gen_ai.usage.cache_creation.input_tokens, span.github.copilot.turn_count)" }
+        { "refId": "A", "datasource": { "type": "tempo", "uid": "${tempoDs}" }, "queryType": "traceql", "tableType": "spans", "limit": 500, "query": "{ name=~\"invoke_agent.*\" && resource.service.name=~\"${source:pipe}\" && span.gen_ai.request.model=~\"${model:pipe}\" && span.gen_ai.conversation.id=~\"$session\" && ${repoSel} && ${branchSel} } | select(resource.service.name, span.gen_ai.request.model, span.gen_ai.conversation.id, span.gen_ai.usage.cost_usd, span.gen_ai.usage.input_tokens, span.gen_ai.usage.output_tokens, span.gen_ai.usage.cache_read.input_tokens, span.gen_ai.usage.cache_creation.input_tokens, span.github.copilot.turn_count)" }
       ],
       "transformations": [
         { "id": "convertFieldType", "options": { "conversions": [
@@ -213,7 +276,7 @@
       "fieldConfig": { "defaults": {}, "overrides": [ { "matcher": { "id": "byName", "options": "Trace ID" }, "properties": [ { "id": "links", "value": [ { "title": "Open trace", "url": "", "internal": { "datasourceUid": "tempo", "datasourceName": "Tempo", "query": { "queryType": "traceql", "query": "${__value.raw}" } } } ] } ] }, { "matcher": { "id": "byName", "options": "Cost (USD)" }, "properties": [ { "id": "unit", "value": "currencyUSD" }, { "id": "decimals", "value": 2 } ] } ] },
       "options": { "showHeader": true, "footer": { "show": true, "reducer": ["sum"], "countRows": false } },
       "targets": [
-        { "refId": "A", "datasource": { "type": "tempo", "uid": "${tempoDs}" }, "queryType": "traceql", "tableType": "spans", "limit": 200, "query": "{ name=~\"invoke_agent.*\" && resource.service.name=~\"${source:pipe}\" && span.gen_ai.request.model=~\"${model:pipe}\" && span.gen_ai.conversation.id=~\"$session\" } | select(resource.service.name, span.gen_ai.request.model, span.gen_ai.conversation.id, span.gen_ai.usage.cost_usd, span.gen_ai.usage.input_tokens, span.gen_ai.usage.output_tokens, span.gen_ai.usage.cache_read.input_tokens, span.gen_ai.usage.cache_creation.input_tokens, span.github.copilot.turn_count)" }
+        { "refId": "A", "datasource": { "type": "tempo", "uid": "${tempoDs}" }, "queryType": "traceql", "tableType": "spans", "limit": 200, "query": "{ name=~\"invoke_agent.*\" && resource.service.name=~\"${source:pipe}\" && span.gen_ai.request.model=~\"${model:pipe}\" && span.gen_ai.conversation.id=~\"$session\" && ${repoSel} && ${branchSel} } | select(resource.service.name, span.gen_ai.request.model, span.gen_ai.conversation.id, span.gen_ai.usage.cost_usd, span.gen_ai.usage.input_tokens, span.gen_ai.usage.output_tokens, span.gen_ai.usage.cache_read.input_tokens, span.gen_ai.usage.cache_creation.input_tokens, span.github.copilot.turn_count)" }
       ],
       "transformations": [
         { "id": "convertFieldType", "options": { "conversions": [

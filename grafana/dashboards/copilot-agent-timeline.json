@@ -5,6 +5,7 @@
   "editable": true,
   "schemaVersion": 39,
   "links": [
+    { "title": "Clear conversation filter", "type": "link", "url": "/d/copilot-agent-timeline/?var-conversation=&var-view=${view}&${__url_time_range}", "keepTime": true, "includeVars": false, "targetBlank": false, "icon": "external link", "tooltip": "Reset the Conversation filter to show all conversations" },
     { "title": "Dashboards", "type": "dashboards", "tags": ["copilot"], "asDropdown": true, "includeVars": false, "keepTime": true, "targetBlank": false, "icon": "apps" }
   ],
   "timezone": "browser",
@@ -20,6 +21,68 @@
         "hide": 0,
         "current": {},
         "refresh": 1
+      },
+      {
+        "name": "repo",
+        "label": "Repository",
+        "description": "Filter conversations to one git repository. All = every repo.",
+        "type": "query",
+        "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+        "query": {
+          "queryType": "infinity",
+          "refId": "variable",
+          "infinityQuery": {
+            "refId": "variable",
+            "type": "json",
+            "source": "url",
+            "parser": "backend",
+            "url": "http://agent-insights:8099/branches.json?from=${__from:date:seconds}&to=${__to:date:seconds}",
+            "url_options": { "method": "GET", "data": "" },
+            "root_selector": "branches",
+            "format": "table",
+            "columns": [
+              { "selector": "repo", "text": "__text", "type": "string" },
+              { "selector": "repo", "text": "__value", "type": "string" }
+            ]
+          }
+        },
+        "includeAll": true,
+        "allValue": "__all__",
+        "current": { "text": "All", "value": "$__all" },
+        "multi": false,
+        "refresh": 2,
+        "sort": 1
+      },
+      {
+        "name": "branch",
+        "label": "Branch",
+        "description": "Filter conversations to one git branch. All = every branch.",
+        "type": "query",
+        "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+        "query": {
+          "queryType": "infinity",
+          "refId": "variable",
+          "infinityQuery": {
+            "refId": "variable",
+            "type": "json",
+            "source": "url",
+            "parser": "backend",
+            "url": "http://agent-insights:8099/branches.json?from=${__from:date:seconds}&to=${__to:date:seconds}",
+            "url_options": { "method": "GET", "data": "" },
+            "root_selector": "branches",
+            "format": "table",
+            "columns": [
+              { "selector": "branch", "text": "__text", "type": "string" },
+              { "selector": "branch", "text": "__value", "type": "string" }
+            ]
+          }
+        },
+        "includeAll": true,
+        "allValue": "__all__",
+        "current": { "text": "All", "value": "$__all" },
+        "multi": false,
+        "refresh": 2,
+        "sort": 1
       },
       {
         "name": "view",
@@ -56,7 +119,7 @@
       "gridPos": { "h": 4, "w": 4, "x": 0, "y": 3 },
       "fieldConfig": { "defaults": { "unit": "s", "decimals": 1 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" }, "colorMode": "none", "graphMode": "none" },
-      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-graph:8099/conversations.json?conversation=${conversation}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "conversations", "format": "table", "columns": [ { "selector": "duration_s", "text": "Duration", "type": "number" } ] } ]
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-insights:8099/conversations.json?conversation=${conversation}&repo=${repo}&branch=${branch}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "conversations", "format": "table", "columns": [ { "selector": "duration_s", "text": "Duration", "type": "number" } ] } ]
     },
     {
       "type": "stat", "title": "Traces",
@@ -64,7 +127,7 @@
       "gridPos": { "h": 4, "w": 4, "x": 4, "y": 3 },
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["sum"], "fields": "" }, "colorMode": "none", "graphMode": "none" },
-      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-graph:8099/conversations.json?conversation=${conversation}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "conversations", "format": "table", "columns": [ { "selector": "traces", "text": "Traces", "type": "number" } ] } ]
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-insights:8099/conversations.json?conversation=${conversation}&repo=${repo}&branch=${branch}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "conversations", "format": "table", "columns": [ { "selector": "traces", "text": "Traces", "type": "number" } ] } ]
     },
     {
       "type": "stat", "title": "LLM calls",
@@ -72,7 +135,7 @@
       "gridPos": { "h": 4, "w": 4, "x": 8, "y": 3 },
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["sum"], "fields": "" }, "colorMode": "none", "graphMode": "none" },
-      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-graph:8099/conversations.json?conversation=${conversation}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "conversations", "format": "table", "columns": [ { "selector": "model_calls", "text": "LLM calls", "type": "number" } ] } ]
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-insights:8099/conversations.json?conversation=${conversation}&repo=${repo}&branch=${branch}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "conversations", "format": "table", "columns": [ { "selector": "model_calls", "text": "LLM calls", "type": "number" } ] } ]
     },
     {
       "type": "stat", "title": "Tools",
@@ -80,7 +143,7 @@
       "gridPos": { "h": 4, "w": 4, "x": 12, "y": 3 },
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["sum"], "fields": "" }, "colorMode": "none", "graphMode": "none" },
-      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-graph:8099/conversations.json?conversation=${conversation}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "conversations", "format": "table", "columns": [ { "selector": "tool_calls", "text": "Tools", "type": "number" } ] } ]
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-insights:8099/conversations.json?conversation=${conversation}&repo=${repo}&branch=${branch}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "conversations", "format": "table", "columns": [ { "selector": "tool_calls", "text": "Tools", "type": "number" } ] } ]
     },
     {
       "type": "stat", "title": "Failures",
@@ -88,7 +151,7 @@
       "gridPos": { "h": 4, "w": 4, "x": 16, "y": 3 },
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "thresholds": { "mode": "absolute", "steps": [ { "value": null, "color": "green" }, { "value": 1, "color": "red" } ] } } },
       "options": { "reduceOptions": { "calcs": ["sum"], "fields": "" }, "colorMode": "background", "graphMode": "none" },
-      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-graph:8099/conversations.json?conversation=${conversation}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "conversations", "format": "table", "columns": [ { "selector": "failures", "text": "Failures", "type": "number" } ] } ]
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-insights:8099/conversations.json?conversation=${conversation}&repo=${repo}&branch=${branch}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "conversations", "format": "table", "columns": [ { "selector": "failures", "text": "Failures", "type": "number" } ] } ]
     },
     {
       "type": "stat", "title": "Total tokens",
@@ -96,7 +159,7 @@
       "gridPos": { "h": 4, "w": 4, "x": 20, "y": 3 },
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["sum"], "fields": "" }, "colorMode": "none", "graphMode": "none" },
-      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-graph:8099/conversations.json?conversation=${conversation}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "conversations", "format": "table", "columns": [ { "selector": "tokens_total", "text": "Total tokens", "type": "number" } ] } ]
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-insights:8099/conversations.json?conversation=${conversation}&repo=${repo}&branch=${branch}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "conversations", "format": "table", "columns": [ { "selector": "tokens_total", "text": "Total tokens", "type": "number" } ] } ]
     },
     {
       "type": "table",
@@ -112,7 +175,7 @@
           "type": "json",
           "source": "url",
           "parser": "backend",
-          "url": "http://agent-graph:8099/conversations.json?from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}&failures_only=${view}&conversation=${conversation}",
+          "url": "http://agent-insights:8099/conversations.json?from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}&failures_only=${view}&conversation=${conversation}&repo=${repo}&branch=${branch}",
           "url_options": { "method": "GET", "data": "" },
           "root_selector": "conversations",
           "format": "table",
@@ -183,7 +246,7 @@
           "type": "json",
           "source": "url",
           "parser": "backend",
-          "url": "http://agent-graph:8099/timeline_states.json?conversation=${conversation}&detail=1&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}",
+          "url": "http://agent-insights:8099/timeline_states.json?conversation=${conversation}&detail=1&repo=${repo}&branch=${branch}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}",
           "url_options": { "method": "GET", "data": "" },
           "root_selector": "states",
           "format": "table"

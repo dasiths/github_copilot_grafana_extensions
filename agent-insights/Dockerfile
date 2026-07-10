@@ -1,4 +1,4 @@
-# Minimal image for the agent-graph edge-builder sidecar (stdlib only, no deps).
+# Minimal image for the agent-insights sidecar (stdlib only, no deps).
 FROM python:3.12-slim
 
 WORKDIR /app

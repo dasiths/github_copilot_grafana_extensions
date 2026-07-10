@@ -18,7 +18,7 @@ services:
       # Land on the Overview dashboard when opening Grafana.
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /otel-lgtm/grafana/conf/provisioning/dashboards/custom/copilot-overview.json
       # Preinstall the Infinity datasource (>= 2.7.1 for backend time macros) so
-      # the Agent Graph and Agent Timeline dashboards can read the agent-graph
+      # the Agent Graph and Agent Timeline dashboards can read the agent-insights
       # sidecar. SYNC installs before Grafana starts, so provisioning finds the
       # plugin. Needs outbound internet on first start to download the plugin.
       GF_PLUGINS_PREINSTALL_SYNC: yesoreyeram-infinity-datasource
@@ -41,18 +41,20 @@ services:
       retries: 5
       start_period: 90s
 
-  agent-graph:
-    # Edge-builder sidecar: walks Tempo traces and serves Grafana Node Graph
-    # frames (nodes + edges) describing the parent-agent -> subagent topology.
-    # Consumed by the Agent Graph dashboard via the Infinity datasource.
-    build: ./agent-graph
-    container_name: copilot-agent-graph
+  agent-insights:
+    # Trace-derived views sidecar: walks Tempo traces and serves aggregated JSON
+    # frames that no LGTM datasource can produce directly — the parent-agent ->
+    # subagent graph, per-conversation timelines, and cost by repo/branch.
+    # Consumed by the Agent Graph, Agent Timeline, and Cost by Repo & Branch
+    # dashboards via the Infinity datasource.
+    build: ./agent-insights
+    container_name: copilot-agent-insights
     environment:
       # Reach Tempo on the shared compose network via the lgtm service name.
       TEMPO_URL: http://lgtm:3200
       PORT: "8099"
     ports:
-      - "8099:8099"   # /graph.json + /health, optional for debugging
+      - "8099:8099"   # JSON views + /health, optional for debugging
     depends_on:
       - lgtm
     restart: unless-stopped

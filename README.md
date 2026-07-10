@@ -30,8 +30,8 @@ flowchart LR
     D --> F
     E --> F
   end
-  D -- "search + walk traces" --> S["agent-graph sidecar :8099"]
-  S -- "nodes + edges JSON" --> F
+  D -- "search + walk traces" --> S["agent-insights sidecar :8099"]
+  S -- "derived-view JSON" --> F
   F --> G["Provisioned<br/>Copilot dashboards"]
 ```
 
@@ -39,9 +39,9 @@ The collector ([otelcol/otelcol-config.yaml](otelcol/otelcol-config.yaml))
 projects an estimated USD cost onto every span that carries token usage, so cost
 is available to any panel without per-dashboard math. See
 [docs/cost-and-metrics.md](docs/cost-and-metrics.md) for the model. The
-[agent-graph](agent-graph/) sidecar walks Tempo traces to build the agent
-topology, per-conversation summaries, and per-agent timelines for the Agent Graph
-and Agent Timeline dashboards.
+[agent-insights](agent-insights/) sidecar walks Tempo traces to build the agent
+topology, per-conversation summaries, per-agent timelines, and per-repo/branch
+cost for the Agent Graph, Agent Timeline, and Cost by Repo & Branch dashboards.
 
 ## Prerequisites
 
@@ -98,8 +98,9 @@ docker compose down -v       # also delete the persisted data volume
 | [Cost & Sessions](grafana/dashboards/copilot-cost-sessions.json) | Spans (Tempo) | Both |
 | [Tools & Agent Activity](grafana/dashboards/copilot-tools-activity.json) | Metrics (Prometheus) | VS Code (+ CLI tool calls) |
 | [Agents](grafana/dashboards/copilot-agents.json) | Metrics (Prometheus) | Both |
-| [Agent Graph](grafana/dashboards/copilot-agent-graph.json) | Traces via `agent-graph` sidecar (Infinity) | Both |
-| [Agent Timeline](grafana/dashboards/copilot-agent-timeline.json) | Traces via `agent-graph` sidecar (Infinity) | Both |
+| [Agent Graph](grafana/dashboards/copilot-agent-graph.json) | Traces via `agent-insights` sidecar (Infinity) | Both |
+| [Agent Timeline](grafana/dashboards/copilot-agent-timeline.json) | Traces via `agent-insights` sidecar (Infinity) | Both |
+| [Cost by Repo & Branch](grafana/dashboards/copilot-branches.json) | Traces via `agent-insights` sidecar (Infinity) | Both |
 
 See [docs/dashboards.md](docs/dashboards.md) for what each dashboard shows, the
 Cost & Sessions data model, metric naming, and how to add your own.
@@ -122,7 +123,7 @@ Cost & Sessions data model, metric naming, and how to add your own.
 | 4318 | OTLP/HTTP | Telemetry ingest (Copilot default) |
 | 9090 | Prometheus | Metrics, optional |
 | 3200 | Tempo | Traces, optional |
-| 8099 | agent-graph | Sidecar nodes/edges JSON, optional |
+| 8099 | agent-insights | Sidecar trace-derived view JSON, optional |
 
 ## Screenshots
 

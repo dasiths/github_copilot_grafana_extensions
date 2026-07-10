@@ -1,30 +1,39 @@
 #!/usr/bin/env python3
-"""Agent-graph edge-builder sidecar.
+"""Agent-insights sidecar: trace-derived views over Tempo.
 
-Grafana's Node Graph panel needs two data frames (nodes + edges), but no LGTM
-datasource can produce *agent* edges: all GitHub Copilot agents share one
-service.name, subagent spans are span-kind INTERNAL, and no span attribute names
-the parent agent. The parent -> child relationship is a GRANDPARENT hop in the
-trace tree:
+Walks Tempo traces and serves aggregated JSON frames that no LGTM datasource can
+produce directly, consumed by the Agent Graph, Agent Timeline, and Cost by Repo
+& Branch dashboards via the Grafana Infinity datasource:
+
+  * /graph.json            agent topology (parent agent -> subagent edges)
+  * /conversations.json    per-conversation rollups (Agent Timeline)
+  * /timeline.json,
+    /timeline_states.json  per-agent swim-lane state frames
+  * /branches.json         cost / tokens / sessions per git repo · branch
+  * /branch_series.json    cost over time per git repo · branch
+
+The agent *graph* is the hardest case and motivates the whole sidecar: all
+GitHub Copilot agents share one service.name, subagent spans are span-kind
+INTERNAL, and no span attribute names the parent agent. The parent -> child
+relationship is a GRANDPARENT hop in the trace tree:
 
     invoke_agent (parent agent)
       └── execute_tool (runSubagent / task)
             └── invoke_agent (subagent)          <- child
 
-This service walks each Tempo trace for the requested time window, derives that
-hop into directed agent edges, aggregates per-agent stats (invocations, cost,
-tokens, tool calls), and serves it as JSON for the Grafana Infinity datasource.
+Each view walks the traces for the requested window, derives the relationship or
+aggregate it needs, and serves it as JSON for Infinity.
 
 Design (see docs/dashboards.md and the research notes):
-  * Compute-on-request, WINDOWED to ?from=&to= (unix seconds) so the graph stays
+  * Compute-on-request, WINDOWED to ?from=&to= (unix seconds) so the views stay
     consistent with the range-windowed Cost & Sessions / Agents dashboards.
     Infinity passes the panel range via ${__timeFrom:date:seconds} /
     ${__timeTo:date:seconds}.
   * Short-TTL in-memory cache keyed by the rounded window, with a single-flight
-    lock, so the 30s auto-refresh and the two simultaneous nodes+edges requests
+    lock, so the 30s auto-refresh and simultaneous requests for one view
     collapse to one Tempo walk.
-  * Always answers 200 with {"nodes":[],"edges":[]} on empty/error so the panel
-    degrades to "No data" instead of erroring.
+  * Always answers 200 with an empty frame on empty/error so panels degrade to
+    "No data" instead of erroring.
 
 Stdlib only.
 """
@@ -32,6 +41,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 import urllib.parse
@@ -266,7 +276,8 @@ def _root_conversation(spans: dict):
 
 
 def build_conversations(start: int, end: int, failures_only: bool = False,
-                        conversation: str = "") -> dict:
+                        conversation: str = "", repo: str = "",
+                        branch: str = "") -> dict:
     convs: dict[str, dict] = {}
     for tid in _search_trace_ids(start, end):
         try:
@@ -274,6 +285,12 @@ def build_conversations(start: int, end: int, failures_only: bool = False,
         except Exception:
             continue
         spans = _index_spans(trace)
+        if repo or branch:
+            t_repo, t_branch = _trace_repo_branch(trace, spans)
+            if repo and t_repo != repo:
+                continue
+            if branch and t_branch != branch:
+                continue
         cid, root_agent = _root_conversation(spans)
         if not cid:
             continue
@@ -338,6 +355,181 @@ def build_conversations(start: int, end: int, failures_only: bool = False,
     return {"conversations": rows}
 
 
+# --- Repo / branch builder (Cost by Branch dashboard) ----------------------
+def _resource_attr(trace: dict, key: str):
+    """Read a resource-level attribute from any batch of the trace.
+
+    The CLI carries git enrichment on the OTel resource (vcs.*), which
+    _index_spans() discards, so branch/repo grouping must reach into
+    trace["batches"][*]["resource"] directly.
+    """
+    for batch in trace.get("batches", []):
+        v = _attr(batch.get("resource", {}), key)
+        if v is not None:
+            return v
+    return None
+
+
+def _repo_name(raw) -> str | None:
+    """Normalize a repo URL or name to a bare repo name (basename minus .git).
+
+    VS Code sets github.copilot.git.repository to a full clone URL; the CLI sets
+    vcs.repository.name (already a basename) or vcs.repository.url.full. Both
+    collapse to the same short name so a repo groups identically across surfaces.
+    """
+    if not raw:
+        return None
+    s = str(raw).rstrip("/")
+    s = s.rsplit("/", 1)[-1].rsplit(":", 1)[-1]  # basename (https + git@host:owner/repo)
+    if s.endswith(".git"):
+        s = s[:-4]
+    return s or None
+
+
+def _trace_repo_branch(trace: dict, spans: dict) -> tuple[str, str]:
+    """(repo, branch) for a trace, coalescing the VS Code (span) and CLI
+    (resource) enrichment shapes into a single grouping key."""
+    repo = branch = None
+    for sp in spans.values():
+        if _attr(sp, "gen_ai.operation.name") != "invoke_agent":
+            continue
+        repo = repo or _attr(sp, "github.copilot.git.repository")
+        branch = branch or _attr(sp, "github.copilot.git.branch")
+        if repo and branch:
+            break
+    if not repo:
+        repo = _resource_attr(trace, "vcs.repository.name") or \
+            _resource_attr(trace, "vcs.repository.url.full")
+    if not branch:
+        branch = _resource_attr(trace, "vcs.ref.head.name")
+    return (_repo_name(repo) or "unknown", str(branch) if branch else "unknown")
+
+
+def _traceql_clause(kind: str, value: str) -> str:
+    """A TraceQL predicate that matches a repo/branch across both surfaces.
+
+    VS Code tags the repo/branch on the invoke_agent span; the CLI tags it on
+    the OTel resource. This ORs the two so a single value scopes both. The
+    'unknown' bucket is not expressible (Tempo cannot search for attribute
+    absence: `attr = nil` returns 400), so it maps to `true` and is excluded
+    from the dashboard filter dropdowns instead. RE2-escaped for safety.
+    """
+    if not value or value == "unknown":
+        return "true"
+    esc = re.escape(value)
+    if kind == "repo":
+        # VS Code repo is a full clone URL (substring); CLI repo is a basename.
+        return (f'(span.github.copilot.git.repository =~ ".*{esc}.*" '
+                f'|| resource.vcs.repository.name =~ "^{esc}$")')
+    return (f'(span.github.copilot.git.branch =~ "^{esc}$" '
+            f'|| resource.vcs.ref.head.name =~ "^{esc}$")')
+
+
+def build_branches(start: int, end: int) -> dict:
+    """Aggregate cost / tokens / sessions per (repo, branch).
+
+    Repo is the primary grouping and branch the secondary. Costs and tokens come
+    off invoke_agent spans; sessions count distinct conversation ids.
+    """
+    buckets: dict[tuple, dict] = {}
+    for tid in _search_trace_ids(start, end):
+        try:
+            trace = _fetch_trace(tid, start, end)
+        except Exception:
+            continue
+        spans = _index_spans(trace)
+        repo, branch = _trace_repo_branch(trace, spans)
+        key = (repo, branch)
+        b = buckets.get(key)
+        if b is None:
+            b = {
+                "repo": repo, "branch": branch, "agents": set(), "sessions": set(),
+                "invocations": 0, "cost_usd": 0.0, "tokens_in": 0.0,
+                "tokens_out": 0.0, "cache_read": 0.0, "cache_write": 0.0,
+            }
+            buckets[key] = b
+        for sp in spans.values():
+            if not (start <= _start_seconds(sp) <= end):
+                continue
+            if _attr(sp, "gen_ai.operation.name") != "invoke_agent":
+                continue
+            b["invocations"] += 1
+            b["agents"].add(_agent_name(sp))
+            b["cost_usd"] += _num(sp, "gen_ai.usage.cost_usd")
+            b["tokens_in"] += _num(sp, "gen_ai.usage.input_tokens")
+            b["tokens_out"] += _num(sp, "gen_ai.usage.output_tokens")
+            b["cache_read"] += _num(sp, "gen_ai.usage.cache_read.input_tokens")
+            b["cache_write"] += _num(sp, "gen_ai.usage.cache_creation.input_tokens")
+            cid = _attr(sp, "gen_ai.conversation.id")
+            if cid:
+                b["sessions"].add(cid)
+    rows = []
+    for b in buckets.values():
+        if b["invocations"] == 0:
+            continue
+        rows.append({
+            "repo": b["repo"],
+            "branch": b["branch"],
+            "repo_branch": f"{b['repo']} \u00b7 {b['branch']}",
+            "repo_clause": _traceql_clause("repo", b["repo"]),
+            "branch_clause": _traceql_clause("branch", b["branch"]),
+            "agents": ", ".join(sorted(b["agents"])),
+            "agent_count": len(b["agents"]),
+            "sessions": len(b["sessions"]),
+            "invocations": b["invocations"],
+            "cost_usd": round(b["cost_usd"], 4),
+            "tokens_in": int(b["tokens_in"]),
+            "tokens_out": int(b["tokens_out"]),
+            "tokens_total": int(b["tokens_in"] + b["tokens_out"]),
+            "cache_read_tokens": int(b["cache_read"]),
+            "cache_write_tokens": int(b["cache_write"]),
+        })
+    rows.sort(key=lambda r: (r["repo"], -r["cost_usd"]))
+    return {"branches": rows}
+
+
+def build_branch_series(start: int, end: int, buckets: int = 48) -> dict:
+    """Wide time-bucketed cost per `repo · branch` for a time series panel.
+
+    One row per time bucket; one column per `repo · branch` holding the cost
+    (USD) of the invoke_agent spans that started in that bucket. Missing cells
+    are 0 so the series draw a continuous line.
+    """
+    span_s = max(1, (end - start))
+    step = max(60, span_s // max(1, buckets))  # >= 60s buckets
+    grid: dict[int, dict[str, float]] = {}
+    series: set[str] = set()
+    for tid in _search_trace_ids(start, end):
+        try:
+            trace = _fetch_trace(tid, start, end)
+        except Exception:
+            continue
+        spans = _index_spans(trace)
+        repo, branch = _trace_repo_branch(trace, spans)
+        key = f"{repo} \u00b7 {branch}"
+        for sp in spans.values():
+            st = _start_seconds(sp)
+            if not (start <= st <= end):
+                continue
+            if _attr(sp, "gen_ai.operation.name") != "invoke_agent":
+                continue
+            cost = _num(sp, "gen_ai.usage.cost_usd")
+            if cost == 0:
+                continue
+            bucket = start + int((st - start) // step) * step
+            grid.setdefault(bucket, {})
+            grid[bucket][key] = grid[bucket].get(key, 0.0) + cost
+            series.add(key)
+    series_list = sorted(series)
+    rows = []
+    for bucket in sorted(grid.keys()):
+        row = {"time": bucket * 1000}
+        for s in series_list:
+            row[s] = round(grid[bucket].get(s, 0.0), 4)
+        rows.append(row)
+    return {"series": rows, "lanes": series_list}
+
+
 def build_timeline(conversation: str, start: int, end: int) -> dict:
     items = []
     for tid in _search_trace_ids(start, end):
@@ -377,7 +569,8 @@ def build_timeline(conversation: str, start: int, end: int) -> dict:
 
 
 def build_timeline_states(conversation: str, start: int, end: int,
-                          detail: bool = False) -> dict:
+                          detail: bool = False, repo: str = "",
+                          branch: str = "") -> dict:
     """Wide, time-indexed frame for the State timeline panel.
 
     Default: one lane per agent, active/error over its invoke_agent intervals.
@@ -395,6 +588,12 @@ def build_timeline_states(conversation: str, start: int, end: int,
         except Exception:
             continue
         spans = _index_spans(trace)
+        if repo or branch:
+            t_repo, t_branch = _trace_repo_branch(trace, spans)
+            if repo and t_repo != repo:
+                continue
+            if branch and t_branch != branch:
+                continue
         cid, _ = _root_conversation(spans)
         if conversation and cid != conversation:
             continue
@@ -468,10 +667,23 @@ def graph_for(start: int, end: int) -> dict:
 
 
 def conversations_for(start: int, end: int, failures_only: bool = False,
-                      conversation: str = "") -> dict:
-    key = ("conv", failures_only, conversation, start // CACHE_BUCKET, end // CACHE_BUCKET)
-    return _cached(key, lambda: build_conversations(start, end, failures_only, conversation),
+                      conversation: str = "", repo: str = "", branch: str = "") -> dict:
+    key = ("conv", failures_only, conversation, repo, branch,
+           start // CACHE_BUCKET, end // CACHE_BUCKET)
+    return _cached(key, lambda: build_conversations(start, end, failures_only,
+                                                    conversation, repo, branch),
                    {"conversations": []})
+
+
+def branches_for(start: int, end: int) -> dict:
+    key = ("branches", start // CACHE_BUCKET, end // CACHE_BUCKET)
+    return _cached(key, lambda: build_branches(start, end), {"branches": []})
+
+
+def branch_series_for(start: int, end: int) -> dict:
+    key = ("branch_series", start // CACHE_BUCKET, end // CACHE_BUCKET)
+    return _cached(key, lambda: build_branch_series(start, end),
+                   {"series": [], "lanes": []})
 
 
 def timeline_for(conversation: str, start: int, end: int) -> dict:
@@ -479,9 +691,12 @@ def timeline_for(conversation: str, start: int, end: int) -> dict:
     return _cached(key, lambda: build_timeline(conversation, start, end), {"timeline": []})
 
 
-def timeline_states_for(conversation: str, start: int, end: int, detail: bool = False) -> dict:
-    key = ("states", detail, conversation, start // CACHE_BUCKET, end // CACHE_BUCKET)
-    return _cached(key, lambda: build_timeline_states(conversation, start, end, detail),
+def timeline_states_for(conversation: str, start: int, end: int, detail: bool = False,
+                        repo: str = "", branch: str = "") -> dict:
+    key = ("states", detail, conversation, repo, branch,
+           start // CACHE_BUCKET, end // CACHE_BUCKET)
+    return _cached(key, lambda: build_timeline_states(conversation, start, end, detail,
+                                                      repo, branch),
                    {"states": [], "lanes": []})
 
 
@@ -513,14 +728,25 @@ class Handler(BaseHTTPRequestHandler):
         elif parsed.path in ("/conversations.json", "/conversations"):
             failures_only = qs.get("failures_only", [""])[0] in ("1", "true", "yes")
             conversation = qs.get("conversation", [""])[0]
-            payload = conversations_for(start, end, failures_only, conversation)
+            repo = _no_filter_if_all(qs.get("repo", [""])[0])
+            branch = _no_filter_if_all(qs.get("branch", [""])[0])
+            payload = conversations_for(start, end, failures_only, conversation, repo, branch)
+        elif parsed.path in ("/branches.json", "/branches"):
+            payload = branches_for(start, end)
+            if qs.get("exclude_unknown", [""])[0] in ("1", "true", "yes"):
+                payload = {"branches": [r for r in payload["branches"]
+                                        if not (r["repo"] == "unknown" and r["branch"] == "unknown")]}
+        elif parsed.path in ("/branch_series.json", "/branch_series"):
+            payload = branch_series_for(start, end)
         elif parsed.path in ("/timeline.json", "/timeline"):
             conversation = qs.get("conversation", [""])[0]
             payload = timeline_for(conversation, start, end)
         elif parsed.path in ("/timeline_states.json", "/timeline_states"):
             conversation = qs.get("conversation", [""])[0]
             detail = qs.get("detail", [""])[0] in ("1", "true", "yes")
-            payload = timeline_states_for(conversation, start, end, detail)
+            repo = _no_filter_if_all(qs.get("repo", [""])[0])
+            branch = _no_filter_if_all(qs.get("branch", [""])[0])
+            payload = timeline_states_for(conversation, start, end, detail, repo, branch)
         else:
             self._send(404, b'{"error":"not found"}')
             return
@@ -528,6 +754,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, *args) -> None:  # keep logs quiet
         return
+
+
+def _no_filter_if_all(value: str) -> str:
+    """Grafana sends the literal `$__all` for an includeAll variable whose
+    allValue is empty; treat those sentinels as 'no filter'."""
+    if value in ("$__all", "${__all}", "__all__", "all", "All"):
+        return ""
+    return value
 
 
 def _coerce_epoch(raw, default: int) -> int:
@@ -545,7 +779,7 @@ def _coerce_epoch(raw, default: int) -> int:
 
 def main() -> None:
     server = ThreadingHTTPServer((LISTEN_ADDR, PORT), Handler)
-    print(f"agent-graph listening on {LISTEN_ADDR}:{PORT}, Tempo={TEMPO_URL}", flush=True)
+    print(f"agent-insights listening on {LISTEN_ADDR}:{PORT}, Tempo={TEMPO_URL}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

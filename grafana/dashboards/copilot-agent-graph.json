@@ -18,7 +18,7 @@
       "gridPos": { "h": 3, "w": 24, "x": 0, "y": 0 },
       "options": {
         "mode": "markdown",
-        "content": "Aggregate **agent topology** for the selected time range. Nodes are agents (`gen_ai.agent.name`); directed edges are parent agent \u2192 subagent, derived by the `agent-graph` sidecar from the `invoke_agent \u2192 execute_tool(runSubagent/task) \u2192 invoke_agent` hop in Tempo traces. Node stats: invocations, estimated cost, tokens, and tool calls. Most useful with multi-agent runs (subagents via `runSubagent` / the CLI `task` tool)."
+        "content": "Aggregate **agent topology** for the selected time range. Nodes are agents (`gen_ai.agent.name`); directed edges are parent agent \u2192 subagent, derived by the `agent-insights` sidecar from the `invoke_agent \u2192 execute_tool(runSubagent/task) \u2192 invoke_agent` hop in Tempo traces. Node stats: invocations, estimated cost, tokens, and tool calls. Most useful with multi-agent runs (subagents via `runSubagent` / the CLI `task` tool)."
       }
     },
     {
@@ -38,7 +38,7 @@
           "type": "json",
           "source": "url",
           "parser": "backend",
-          "url": "http://agent-graph:8099/graph.json?from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}",
+          "url": "http://agent-insights:8099/graph.json?from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}",
           "url_options": { "method": "GET", "data": "" },
           "root_selector": "nodes",
           "format": "node-graph-nodes",
@@ -60,7 +60,7 @@
           "type": "json",
           "source": "url",
           "parser": "backend",
-          "url": "http://agent-graph:8099/graph.json?from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}",
+          "url": "http://agent-insights:8099/graph.json?from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}",
           "url_options": { "method": "GET", "data": "" },
           "root_selector": "edges",
           "format": "node-graph-edges",

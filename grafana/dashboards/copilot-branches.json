@@ -1,0 +1,233 @@
+{
+  "uid": "copilot-branches",
+  "title": "GitHub Copilot - Cost by Repo & Branch",
+  "tags": ["copilot", "genai", "otel", "cost", "repo", "branch"],
+  "editable": true,
+  "schemaVersion": 39,
+  "links": [
+    { "title": "Dashboards", "type": "dashboards", "tags": ["copilot"], "asDropdown": true, "includeVars": false, "keepTime": true, "targetBlank": false, "icon": "apps" }
+  ],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "tempoDs",
+        "label": "Tempo",
+        "type": "datasource",
+        "query": "tempo",
+        "hide": 2,
+        "current": {},
+        "refresh": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "text",
+      "title": "About",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "**Cost & usage grouped by git repository (primary) and branch (secondary).** Each row aggregates the Copilot invocations for one `repo \u00b7 branch` over the selected range: cost, tokens, cache reuse, sessions, and the agents involved. Repo/branch is coalesced across surfaces \u2014 VS Code tags it on the `invoke_agent` span (`github.copilot.git.repository` / `github.copilot.git.branch`); the CLI carries it on the OTel resource (`vcs.repository.name` / `vcs.ref.head.name`) via `scripts/copilot-cli-otel.*`. Rows show as **unknown** until the CLI enrichment script is sourced. Use the column filter icons in the table to filter by repo or branch."
+      }
+    },
+    {
+      "type": "stat", "title": "Total cost",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 2 } },
+      "options": { "reduceOptions": { "calcs": ["sum"], "fields": "" }, "colorMode": "value", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-insights:8099/branches.json?from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "branches", "format": "table", "columns": [ { "selector": "cost_usd", "text": "Cost", "type": "number" } ] } ]
+    },
+    {
+      "type": "stat", "title": "Input tokens",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
+      "options": { "reduceOptions": { "calcs": ["sum"], "fields": "" }, "colorMode": "none", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-insights:8099/branches.json?from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "branches", "format": "table", "columns": [ { "selector": "tokens_in", "text": "Input", "type": "number" } ] } ]
+    },
+    {
+      "type": "stat", "title": "Output tokens",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
+      "options": { "reduceOptions": { "calcs": ["sum"], "fields": "" }, "colorMode": "none", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-insights:8099/branches.json?from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "branches", "format": "table", "columns": [ { "selector": "tokens_out", "text": "Output", "type": "number" } ] } ]
+    },
+    {
+      "type": "stat", "title": "Cache read tokens",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
+      "options": { "reduceOptions": { "calcs": ["sum"], "fields": "" }, "colorMode": "none", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-insights:8099/branches.json?from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "branches", "format": "table", "columns": [ { "selector": "cache_read_tokens", "text": "Cache read", "type": "number" } ] } ]
+    },
+    {
+      "type": "stat", "title": "Sessions",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
+      "options": { "reduceOptions": { "calcs": ["sum"], "fields": "" }, "colorMode": "none", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-insights:8099/branches.json?from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "branches", "format": "table", "columns": [ { "selector": "sessions", "text": "Sessions", "type": "number" } ] } ]
+    },
+    {
+      "type": "stat", "title": "Invocations",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
+      "options": { "reduceOptions": { "calcs": ["sum"], "fields": "" }, "colorMode": "none", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-insights:8099/branches.json?from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "branches", "format": "table", "columns": [ { "selector": "invocations", "text": "Invocations", "type": "number" } ] } ]
+    },
+    {
+      "type": "barchart",
+      "title": "Cost by repo \u00b7 branch",
+      "description": "Cost per repo \u00b7 branch over the selected range. Primary grouping is the repository; each branch is a separate bar.",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 8 },
+      "options": {
+        "orientation": "horizontal",
+        "xTickLabelRotation": 0,
+        "showValue": "auto",
+        "stacking": "none",
+        "legend": { "showLegend": false, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "currencyUSD", "decimals": 2, "color": { "mode": "continuous-GrYlRd" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "url": "http://agent-insights:8099/branches.json?from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}",
+          "url_options": { "method": "GET", "data": "" },
+          "root_selector": "branches",
+          "format": "table",
+          "columns": [
+            { "selector": "repo_branch", "text": "Repo \u00b7 Branch", "type": "string" },
+            { "selector": "cost_usd", "text": "Cost (USD)", "type": "number" }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Cost over time by repo \u00b7 branch",
+      "description": "Estimated cost (USD) of invoke_agent spans per time bucket, stacked by repo \u00b7 branch. Buckets scale with the selected range.",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 17 },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "lineWidth": 1,
+            "stacking": { "mode": "normal", "group": "A" }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "url": "http://agent-insights:8099/branch_series.json?from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}",
+          "url_options": { "method": "GET", "data": "" },
+          "root_selector": "series",
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        { "id": "convertFieldType", "options": { "conversions": [ { "targetField": "time", "destinationType": "time" } ] } }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Repos & branches",
+      "description": "One row per repo \u00b7 branch. Use the column filter icons to filter by repository or branch. Click a branch to open the Agent Timeline scoped to it. Cost is color-scaled. Rows show as 'unknown' until the surface emits git enrichment (CLI needs scripts/copilot-cli-otel.* sourced).",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 13, "w": 24, "x": 0, "y": 25 },
+      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": true, "reducer": ["sum"], "fields": ["cost_usd", "tokens_in", "tokens_out", "invocations", "sessions"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "url": "http://agent-insights:8099/branches.json?from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}",
+          "url_options": { "method": "GET", "data": "" },
+          "root_selector": "branches",
+          "format": "table",
+          "columns": [
+            { "selector": "repo", "text": "Repository", "type": "string" },
+            { "selector": "branch", "text": "Branch", "type": "string" },
+            { "selector": "agents", "text": "Agents", "type": "string" },
+            { "selector": "invocations", "text": "Invocations", "type": "number" },
+            { "selector": "sessions", "text": "Sessions", "type": "number" },
+            { "selector": "cost_usd", "text": "Cost (USD)", "type": "number" },
+            { "selector": "tokens_in", "text": "Input", "type": "number" },
+            { "selector": "tokens_out", "text": "Output", "type": "number" },
+            { "selector": "cache_read_tokens", "text": "Cache read", "type": "number" }
+          ]
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "Repository": 0,
+              "Branch": 1,
+              "Agents": 2,
+              "Invocations": 3,
+              "Sessions": 4,
+              "Cost (USD)": 5,
+              "Input": 6,
+              "Output": 7,
+              "Cache read": 8
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "filterable": true } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Repository" }, "properties": [ { "id": "custom.width", "value": 280 } ] },
+          {
+            "matcher": { "id": "byName", "options": "Branch" },
+            "properties": [
+              { "id": "custom.width", "value": 200 },
+              { "id": "links", "value": [ { "title": "Open this repo \u00b7 branch in the Agent Timeline", "url": "/d/copilot-agent-timeline/github-copilot-agent-timeline?var-repo=${__data.fields.Repository}&var-branch=${__data.fields.Branch}&${__url_time_range}", "targetBlank": false } ] }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Cost (USD)" },
+            "properties": [
+              { "id": "unit", "value": "currencyUSD" },
+              { "id": "decimals", "value": 2 },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+              { "id": "color", "value": { "mode": "continuous-GrYlRd" } }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

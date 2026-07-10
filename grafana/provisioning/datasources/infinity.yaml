@@ -1,5 +1,5 @@
-# Infinity datasource, used by the Agent Graph dashboard to read the
-# agent-graph sidecar's JSON (nodes + edges) for the Node Graph panel.
+# Infinity datasource, used by the Agent Graph, Agent Timeline, and Cost by Repo
+# & Branch dashboards to read the agent-insights sidecar's JSON views.
 #
 # Infinity's backend time macros (${__timeFrom:date:seconds} /
 # ${__timeTo:date:seconds}) let the panel pass the dashboard time range to the

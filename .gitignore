@@ -8,5 +8,8 @@ data/
 # OS / editor cruft
 .DS_Store
 
+# Python cruft
+agent-insights/__pycache__
+
 # IDE / editor cruft
 .copilot-tracking
