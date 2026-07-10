@@ -50,6 +50,30 @@ cost for the Agent Graph, Agent Timeline, and Cost by Repo & Branch dashboards.
 
 ## Quick start
 
+### Scripted install (`curl | bash`)
+
+If you would rather not clone the repo, the bootstrap script downloads the
+assets, optionally starts the stack, and wires up telemetry interactively:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dasiths/github_copilot_grafana_extensions/main/scripts/install.sh | bash
+```
+
+On Windows, use the PowerShell installer instead:
+
+```powershell
+irm https://raw.githubusercontent.com/dasiths/github_copilot_grafana_extensions/main/scripts/install.ps1 | iex
+```
+
+It fetches the compose file, Grafana provisioning, collector config, and the
+agent-insights sidecar into `~/.agents/telemetry/copilot-extensions/`, prints the
+VS Code User settings for you to paste, and can add the Copilot CLI `source` line
+to your shell profile. It prompts at each step (even through the pipe) and skips
+anything it cannot do; re-run it with `--uninstall` to reverse the changes. The
+manual steps below do the same thing if you prefer to run them yourself.
+
+### Manual setup
+
 1. Start the LGTM stack:
 
    ```bash
