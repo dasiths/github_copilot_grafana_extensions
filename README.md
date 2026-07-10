@@ -80,7 +80,8 @@ and Agent Timeline dashboards.
 
 4. Open Grafana at <http://localhost:3000> (default login `admin` / `admin`).
    The **GitHub Copilot** dashboard folder contains the provisioned dashboards,
-   and Cost & Sessions is the home dashboard.
+   Overview is the home dashboard, and a **Dashboards** dropdown in the top bar
+   switches between them.
 
 To stop the stack:
 
@@ -93,9 +94,9 @@ docker compose down -v       # also delete the persisted data volume
 
 | Dashboard | Source | Surface |
 |-----------|--------|---------|
-| [Cost & Sessions](grafana/dashboards/copilot-cost-sessions.json) (home) | Spans (Tempo) | Both |
-| [Overview](grafana/dashboards/copilot-overview.json) | Metrics (Prometheus) | Shared + VS Code |
-| [Tools & Agent Activity](grafana/dashboards/copilot-tools-activity.json) | Metrics (Prometheus) | VS Code |
+| [Overview](grafana/dashboards/copilot-overview.json) (home) | Metrics (Prometheus) | Both |
+| [Cost & Sessions](grafana/dashboards/copilot-cost-sessions.json) | Spans (Tempo) | Both |
+| [Tools & Agent Activity](grafana/dashboards/copilot-tools-activity.json) | Metrics (Prometheus) | VS Code (+ CLI tool calls) |
 | [Agents](grafana/dashboards/copilot-agents.json) | Metrics (Prometheus) | Both |
 | [Agent Graph](grafana/dashboards/copilot-agent-graph.json) | Traces via `agent-graph` sidecar (Infinity) | Both |
 | [Agent Timeline](grafana/dashboards/copilot-agent-timeline.json) | Traces via `agent-graph` sidecar (Infinity) | Both |

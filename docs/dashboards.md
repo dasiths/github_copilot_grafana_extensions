@@ -4,26 +4,41 @@ The stack provisions six dashboards into the **GitHub Copilot** folder in
 Grafana. This page describes each one, explains the Cost & Sessions data model,
 covers Prometheus metric naming, and shows how to add your own dashboards.
 
+**Overview** is the home dashboard, and every dashboard has a **Dashboards**
+dropdown in the top bar (a dashboard link keyed on the `copilot` tag) to navigate
+between them while keeping the selected time range.
+
 ## Overview of the provisioned dashboards
 
 | Dashboard | File | Source | Surface | Highlights |
 |-----------|------|--------|---------|------------|
-| GitHub Copilot - Overview | [copilot-overview.json](../grafana/dashboards/copilot-overview.json) | Metrics (Prometheus) | Shared + VS Code | Sessions, input/output tokens, token rate by model, LLM call duration, time to first token, tool calls. Has a **Source (service)** filter to isolate VS Code vs CLI |
-| GitHub Copilot - Tools & Agent Activity | [copilot-tools-activity.json](../grafana/dashboards/copilot-tools-activity.json) | Metrics (Prometheus) | VS Code extension | Tool call counts and latency, edit accept/reject decisions, lines of code changed, agent invocation duration |
-| GitHub Copilot - Cost & Sessions | [copilot-cost-sessions.json](../grafana/dashboards/copilot-cost-sessions.json) | Spans (Tempo) | Both (CLI + VS Code) | **Home dashboard.** Estimated USD cost + tokens up top, then Sessions / Agent invocations / Requests tables (tokens, cache, `cost_usd`), with **Source**, **Model**, and **Session** filters |
+| GitHub Copilot - Overview | [copilot-overview.json](../grafana/dashboards/copilot-overview.json) | Metrics (Prometheus) | Both (CLI + VS Code) | **Home dashboard.** Sessions, input/output tokens, token rate by model, LLM call duration, time to first token/chunk, tool calls. Tool calls, duration, and time-to-first are cross-surface; token/session **counts** come from VS Code metrics (CLI token detail is on the span dashboards). Has a **Source (service)** filter |
+| GitHub Copilot - Tools & Agent Activity | [copilot-tools-activity.json](../grafana/dashboards/copilot-tools-activity.json) | Metrics (Prometheus) | VS Code (+ CLI tool calls) | Tool call counts/latency (cross-surface), plus VS Code editor metrics with no CLI equivalent: edit accept/reject decisions, lines of code changed, agent invocation duration |
+| GitHub Copilot - Cost & Sessions | [copilot-cost-sessions.json](../grafana/dashboards/copilot-cost-sessions.json) | Spans (Tempo) | Both (CLI + VS Code) | Estimated USD cost + tokens up top, then Sessions / Agent invocations / Requests tables (tokens, cache, `cost_usd`), with **Source**, **Model**, and **Session** filters |
 | GitHub Copilot - Agents | [copilot-agents.json](../grafana/dashboards/copilot-agents.json) | Metrics (Prometheus) | Both (CLI + VS Code) | Per-agent breakdown (`gen_ai.agent.name`): invocations, cost, tokens, duration p95, and activity over time. Most useful with multi-agent CLI runs (subagents via the `task` tool) |
 | GitHub Copilot - Agent Graph | [copilot-agent-graph.json](../grafana/dashboards/copilot-agent-graph.json) | Traces via the `agent-graph` sidecar (Infinity) | Both (CLI + VS Code) | Node Graph of the agent topology: nodes = agents, directed edges = parent agent → subagent, with per-node invocations, cost, tokens, and tool calls |
 | GitHub Copilot - Agent Timeline | [copilot-agent-timeline.json](../grafana/dashboards/copilot-agent-timeline.json) | Traces via the `agent-graph` sidecar (Infinity) | Both (CLI + VS Code) | Conversation-first view: per-conversation summary table (duration, model/tool calls, agents, cost, **failures**) with a **Failures only** toggle, plus a per-agent swim-lane timeline |
 
-Both metric surfaces share the same `gen_ai.*` token and duration metrics, so the
-Overview dashboard covers VS Code and the CLI together; its **Source (service)**
-filter isolates `copilot-chat` (VS Code) from `github-copilot` (CLI). A dedicated
-CLI dashboard is not needed: the shared metrics plus the source filter, together
-with the span-based Cost & Sessions dashboard, cover the CLI.
+VS Code and the CLI emit the **same `gen_ai.*` token and duration metrics**, and
+the metric dashboards union the surface-specific names where they differ
+(`copilot_chat_tool_call_count_total` + `github_copilot_tool_call_count_total`
+for tool calls; the `gen_ai.client.operation.*` variants with/without the
+`_seconds` suffix for durations and time-to-first). So the **Overview** dashboard
+covers VS Code and the CLI together, and its **Source (service)** filter isolates
+`copilot-chat` (VS Code) from `github-copilot` (CLI). A few concepts exist on
+only one surface: token/session **counts as metrics** and the editor metrics
+(edit decisions, lines of code) are VS Code only, while CLI token/cost detail
+lives on the span-based dashboards. A dedicated CLI dashboard is not needed.
+
+> **CLI agent naming:** the CLI's top-level agent leaves `gen_ai.agent.name`
+> unset and only sets `gen_ai.agent.id` (`github.copilot.default`). The collector
+> ([otelcol/otelcol-config.yaml](../otelcol/otelcol-config.yaml)) and the
+> `agent-graph` sidecar both fall back to the id (surfaced as **Copilot CLI**) so
+> CLI activity is attributed to a named agent instead of `unknown`.
 
 ## GitHub Copilot - Cost & Sessions
 
-This is the default/home dashboard and leads with **estimated USD cost and
+This is a span-based dashboard that leads with **estimated USD cost and
 tokens**. Cost, cache tokens, and per-session detail live only on trace spans
 (not metrics), so the dashboard reads them from Tempo. See
 [Cost estimation and Prometheus metrics](cost-and-metrics.md) for how the cost

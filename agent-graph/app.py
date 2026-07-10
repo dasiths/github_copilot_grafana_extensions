@@ -104,6 +104,18 @@ def _start_seconds(span: dict) -> float:
         return 0.0
 
 
+def _agent_name(span: dict) -> str:
+    """Agent identity. VS Code sets gen_ai.agent.name; the CLI top-level agent
+    leaves it unset and only sets gen_ai.agent.id (github.copilot.default), so
+    fall back to the id to avoid empty/\"unknown\" agents."""
+    name = _attr(span, "gen_ai.agent.name") or _attr(span, "gen_ai.agent.id")
+    if not name:
+        return "unknown"
+    if name == "github.copilot.default":
+        return "Copilot CLI"
+    return str(name)
+
+
 def _index_spans(trace: dict) -> dict:
     spans: dict[str, dict] = {}
     for batch in trace.get("batches", []):
@@ -125,7 +137,7 @@ def _owner_agent(span: dict, spans: dict) -> str | None:
             break
         seen.add(sid)
         if _attr(cur, "gen_ai.operation.name") == "invoke_agent":
-            return _attr(cur, "gen_ai.agent.name")
+            return _agent_name(cur)
         parent = cur.get("parentSpanId")
         cur = spans.get(parent) if parent else None
     return None
@@ -162,7 +174,7 @@ def build_graph(start: int, end: int) -> dict:
                 continue
             op = _attr(sp, "gen_ai.operation.name")
             if op == "invoke_agent":
-                agent = _attr(sp, "gen_ai.agent.name") or "unknown"
+                agent = _agent_name(sp)
                 n = node(agent)
                 n["invocations"] += 1
                 n["cost_usd"] += _num(sp, "gen_ai.usage.cost_usd")
@@ -173,7 +185,7 @@ def build_graph(start: int, end: int) -> dict:
                 if parent is not None and _attr(parent, "gen_ai.operation.name") == "execute_tool":
                     gp = spans.get(parent.get("parentSpanId")) if parent.get("parentSpanId") else None
                     if gp is not None and _attr(gp, "gen_ai.operation.name") == "invoke_agent":
-                        src = _attr(gp, "gen_ai.agent.name") or "unknown"
+                        src = _agent_name(gp)
                         node(src)
                         key = (src, agent)
                         e = edges.get(key)
@@ -238,7 +250,7 @@ def _root_conversation(spans: dict):
     for sp in spans.values():
         if _attr(sp, "gen_ai.operation.name") != "invoke_agent":
             continue
-        fallback = (_attr(sp, "gen_ai.conversation.id"), _attr(sp, "gen_ai.agent.name"))
+        fallback = (_attr(sp, "gen_ai.conversation.id"), _agent_name(sp))
         cur = spans.get(sp.get("parentSpanId")) if sp.get("parentSpanId") else None
         seen = set()
         is_root = True
@@ -249,7 +261,7 @@ def _root_conversation(spans: dict):
                 break
             cur = spans.get(cur.get("parentSpanId")) if cur.get("parentSpanId") else None
         if is_root:
-            return _attr(sp, "gen_ai.conversation.id"), _attr(sp, "gen_ai.agent.name")
+            return _attr(sp, "gen_ai.conversation.id"), _agent_name(sp)
     return fallback
 
 
@@ -291,9 +303,7 @@ def build_conversations(start: int, end: int, failures_only: bool = False,
             op = _attr(sp, "gen_ai.operation.name")
             if op == "invoke_agent":
                 c["invocations"] += 1
-                ag = _attr(sp, "gen_ai.agent.name")
-                if ag:
-                    c["agents"].add(ag)
+                c["agents"].add(_agent_name(sp))
                 c["cost_usd"] += _num(sp, "gen_ai.usage.cost_usd")
                 c["tokens_in"] += _num(sp, "gen_ai.usage.input_tokens")
                 c["tokens_out"] += _num(sp, "gen_ai.usage.output_tokens")
@@ -349,7 +359,7 @@ def build_timeline(conversation: str, start: int, end: int) -> dict:
                 e = s
             owner = _owner_agent(sp, spans) or "unknown"
             label = {
-                "invoke_agent": _attr(sp, "gen_ai.agent.name") or owner,
+                "invoke_agent": _agent_name(sp),
                 "execute_tool": _attr(sp, "gen_ai.tool.name") or "tool",
                 "chat": _attr(sp, "gen_ai.request.model") or "chat",
             }.get(op, op)
@@ -400,7 +410,7 @@ def build_timeline_states(conversation: str, start: int, end: int,
             else:
                 if op != "invoke_agent":
                     continue
-                lane = _attr(sp, "gen_ai.agent.name") or "unknown"
+                lane = _agent_name(sp)
                 value = "error" if _is_error(sp) else "active"
             s = int(_start_seconds(sp) * 1000)
             e = int(_end_seconds(sp) * 1000)

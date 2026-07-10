@@ -55,6 +55,14 @@ processors:
     trace_statements:
       - context: span
         statements:
+          # --- Backfill agent name from agent id. VS Code sets gen_ai.agent.name;
+          #     the CLI top-level agent only sets gen_ai.agent.id
+          #     (github.copilot.default), so per-agent metrics would otherwise
+          #     bucket it as "unknown". Keep this before the sum/spanmetrics
+          #     connectors consume gen_ai.agent.name. ---
+          - set(attributes["gen_ai.agent.name"], attributes["gen_ai.agent.id"]) where attributes["gen_ai.agent.name"] == nil and attributes["gen_ai.agent.id"] != nil
+          - set(attributes["gen_ai.agent.name"], "Copilot CLI") where attributes["gen_ai.agent.name"] == "github.copilot.default"
+
           # --- Normalize token counts into temp int attributes (default 0). ---
           - set(attributes["_ct_in"], Int(attributes["gen_ai.usage.input_tokens"])) where attributes["gen_ai.usage.input_tokens"] != nil
           - set(attributes["_ct_in"], 0) where attributes["_ct_in"] == nil

@@ -15,8 +15,8 @@ services:
       # Grafana admin credentials (dev only).
       GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-admin}
-      # Land on the Cost & Sessions dashboard (tokens + cost) when opening Grafana.
-      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /otel-lgtm/grafana/conf/provisioning/dashboards/custom/copilot-cost-sessions.json
+      # Land on the Overview dashboard when opening Grafana.
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /otel-lgtm/grafana/conf/provisioning/dashboards/custom/copilot-overview.json
       # Preinstall the Infinity datasource (>= 2.7.1 for backend time macros) so
       # the Agent Graph and Agent Timeline dashboards can read the agent-graph
       # sidecar. SYNC installs before Grafana starts, so provisioning finds the

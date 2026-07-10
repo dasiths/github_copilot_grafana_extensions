@@ -4,6 +4,9 @@
   "tags": ["copilot", "genai", "otel", "agent"],
   "editable": true,
   "schemaVersion": 39,
+  "links": [
+    { "title": "Dashboards", "type": "dashboards", "tags": ["copilot"], "asDropdown": true, "includeVars": false, "keepTime": true, "targetBlank": false, "icon": "apps" }
+  ],
   "timezone": "browser",
   "refresh": "30s",
   "time": { "from": "now-6h", "to": "now" },
@@ -23,7 +26,7 @@
         "label": "Tool",
         "type": "query",
         "datasource": { "type": "prometheus", "uid": "${datasource}" },
-        "query": "label_values(copilot_chat_tool_call_count_total, gen_ai_tool_name)",
+        "query": "label_values({__name__=~\"copilot_chat_tool_call_count_total|github_copilot_tool_call_count_total\"}, gen_ai_tool_name)",
         "includeAll": true,
         "multi": true,
         "allValue": ".*",
@@ -86,7 +89,7 @@
       "fieldConfig": { "defaults": { "unit": "short" } },
       "options": { "orientation": "horizontal", "showValue": "auto", "legend": { "showLegend": false } },
       "targets": [
-        { "refId": "A", "expr": "sum by (gen_ai_tool_name) (max_over_time(copilot_chat_tool_call_count_total{gen_ai_tool_name=~\"$tool\"}[$__range]))", "legendFormat": "{{gen_ai_tool_name}}", "format": "table", "instant": true }
+        { "refId": "A", "expr": "sum by (gen_ai_tool_name) (max_over_time({__name__=~\"copilot_chat_tool_call_count_total|github_copilot_tool_call_count_total\", gen_ai_tool_name=~\"$tool\"}[$__range]))", "legendFormat": "{{gen_ai_tool_name}}", "format": "table", "instant": true }
       ]
     },
     {
