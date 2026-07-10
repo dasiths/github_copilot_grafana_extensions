@@ -1,0 +1,205 @@
+{
+  "uid": "copilot-agent-timeline",
+  "title": "GitHub Copilot - Agent Timeline",
+  "tags": ["copilot", "genai", "otel", "agents", "timeline"],
+  "editable": true,
+  "schemaVersion": 39,
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "tempoDs",
+        "label": "Tempo",
+        "type": "datasource",
+        "query": "tempo",
+        "hide": 0,
+        "current": {},
+        "refresh": 1
+      },
+      {
+        "name": "view",
+        "label": "View",
+        "type": "custom",
+        "query": "All : 0,Failures only : 1",
+        "current": { "text": "All", "value": "0" },
+        "includeAll": false,
+        "multi": false
+      },
+      {
+        "name": "conversation",
+        "label": "Conversation (id)",
+        "description": "Paste a conversation id from the table to focus the timeline. Empty = all conversations in range.",
+        "type": "textbox",
+        "query": "",
+        "current": { "text": "", "value": "" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "text",
+      "title": "About",
+      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "**Conversation-first view** of Copilot agent activity, like an agent timeline. The table summarizes each conversation (grouped by the root agent's `gen_ai.conversation.id`) with duration, model/tool calls, agents involved, cost, and **failures**. Use **View \u2192 Failures only** to isolate failing conversations. **Click a conversation id** (or paste one into **Conversation**) to filter the summary cards, swim lanes, and traces to it. \u2014 [**Show all conversations**](/d/copilot-agent-timeline/github-copilot-agent-timeline?${__url_time_range}&var-view=${view}&var-conversation=) to reset the filter."
+      }
+    },
+    {
+      "type": "stat", "title": "Duration",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 3 },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 1 } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" }, "colorMode": "none", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-graph:8099/conversations.json?conversation=${conversation}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "conversations", "format": "table", "columns": [ { "selector": "duration_s", "text": "Duration", "type": "number" } ] } ]
+    },
+    {
+      "type": "stat", "title": "Traces",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 3 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
+      "options": { "reduceOptions": { "calcs": ["sum"], "fields": "" }, "colorMode": "none", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-graph:8099/conversations.json?conversation=${conversation}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "conversations", "format": "table", "columns": [ { "selector": "traces", "text": "Traces", "type": "number" } ] } ]
+    },
+    {
+      "type": "stat", "title": "LLM calls",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 3 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
+      "options": { "reduceOptions": { "calcs": ["sum"], "fields": "" }, "colorMode": "none", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-graph:8099/conversations.json?conversation=${conversation}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "conversations", "format": "table", "columns": [ { "selector": "model_calls", "text": "LLM calls", "type": "number" } ] } ]
+    },
+    {
+      "type": "stat", "title": "Tools",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 3 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
+      "options": { "reduceOptions": { "calcs": ["sum"], "fields": "" }, "colorMode": "none", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-graph:8099/conversations.json?conversation=${conversation}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "conversations", "format": "table", "columns": [ { "selector": "tool_calls", "text": "Tools", "type": "number" } ] } ]
+    },
+    {
+      "type": "stat", "title": "Failures",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 3 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "thresholds": { "mode": "absolute", "steps": [ { "value": null, "color": "green" }, { "value": 1, "color": "red" } ] } } },
+      "options": { "reduceOptions": { "calcs": ["sum"], "fields": "" }, "colorMode": "background", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-graph:8099/conversations.json?conversation=${conversation}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "conversations", "format": "table", "columns": [ { "selector": "failures", "text": "Failures", "type": "number" } ] } ]
+    },
+    {
+      "type": "stat", "title": "Total tokens",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 3 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
+      "options": { "reduceOptions": { "calcs": ["sum"], "fields": "" }, "colorMode": "none", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-graph:8099/conversations.json?conversation=${conversation}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "conversations", "format": "table", "columns": [ { "selector": "tokens_total", "text": "Total tokens", "type": "number" } ] } ]
+    },
+    {
+      "type": "table",
+      "title": "Conversations",
+      "description": "One row per conversation (root gen_ai.conversation.id). Failures are highlighted red. Toggle View to show only conversations with failures.",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 11, "w": 24, "x": 0, "y": 7 },
+      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": false } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "url": "http://agent-graph:8099/conversations.json?from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}&failures_only=${view}&conversation=${conversation}",
+          "url_options": { "method": "GET", "data": "" },
+          "root_selector": "conversations",
+          "format": "table",
+          "columns": [
+            { "selector": "conversation_id", "text": "Conversation", "type": "string" },
+            { "selector": "root_agent", "text": "Root agent", "type": "string" },
+            { "selector": "agents", "text": "Agents", "type": "string" },
+            { "selector": "invocations", "text": "Invocations", "type": "number" },
+            { "selector": "model_calls", "text": "Model calls", "type": "number" },
+            { "selector": "tool_calls", "text": "Tool calls", "type": "number" },
+            { "selector": "failures", "text": "Failures", "type": "number" },
+            { "selector": "duration_s", "text": "Duration", "type": "number" },
+            { "selector": "cost_usd", "text": "Cost (USD)", "type": "number" },
+            { "selector": "tokens_in", "text": "Input", "type": "number" },
+            { "selector": "tokens_out", "text": "Output", "type": "number" }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Failures" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+              { "id": "color", "value": { "mode": "thresholds" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [ { "value": null, "color": "green" }, { "value": 1, "color": "red" } ] } }
+            ]
+          },
+          { "matcher": { "id": "byName", "options": "Cost (USD)" }, "properties": [ { "id": "unit", "value": "currencyUSD" }, { "id": "decimals", "value": 2 } ] },
+          { "matcher": { "id": "byName", "options": "Duration" }, "properties": [ { "id": "unit", "value": "s" }, { "id": "decimals", "value": 1 } ] },
+          { "matcher": { "id": "byName", "options": "Conversation" }, "properties": [ { "id": "custom.width", "value": 320 }, { "id": "links", "value": [ { "title": "Filter this dashboard to this conversation", "url": "/d/copilot-agent-timeline/github-copilot-agent-timeline?${__url_time_range}&var-view=${view}&var-conversation=${__value.text}", "targetBlank": false } ] } ] }
+        ]
+      }
+    },
+    {
+      "type": "state-timeline",
+      "title": "Agent swim lanes (invocation / LLM / tool per agent)",
+      "description": "Each agent decomposes into three lanes \u2014 Agent invocation (green), LLM operations (purple), Tool calls (blue) \u2014 active over the matching spans for the selected conversation; failing spans are red. Paste a conversation id in the Conversation variable to focus a single conversation.",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 16, "w": 24, "x": 0, "y": 18 },
+      "options": {
+        "mergeValues": true,
+        "showValue": "never",
+        "alignValue": "center",
+        "rowHeight": 0.9,
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "fillOpacity": 80, "lineWidth": 0 },
+          "mappings": [
+            { "type": "value", "options": { "invoke": { "color": "green", "index": 0, "text": "Agent invocation" }, "llm": { "color": "purple", "index": 1, "text": "LLM" }, "tool": { "color": "blue", "index": 2, "text": "Tool" }, "error": { "color": "red", "index": 3, "text": "error" } } }
+          ],
+          "color": { "mode": "fixed" },
+          "links": [
+            { "title": "Open trace waterfall (spans)", "url": "/explore?schemaVersion=1&orgId=1&panes={\"tr\":{\"datasource\":\"${tempoDs}\",\"queries\":[{\"refId\":\"A\",\"datasource\":{\"type\":\"tempo\",\"uid\":\"${tempoDs}\"},\"queryType\":\"traceql\",\"query\":\"${__data.fields.traceid}\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}}", "targetBlank": true }
+          ]
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "traceid" }, "properties": [ { "id": "custom.hideFrom", "value": { "legend": true, "tooltip": true, "viz": true } } ] }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "url": "http://agent-graph:8099/timeline_states.json?conversation=${conversation}&detail=1&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}",
+          "url_options": { "method": "GET", "data": "" },
+          "root_selector": "states",
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        { "id": "convertFieldType", "options": { "conversions": [ { "targetField": "time", "destinationType": "time" } ] } }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Traces in conversation",
+      "description": "Traces for the selected conversation (matched on gen_ai.conversation.id). Click a Trace ID to open the full span waterfall. Paste a conversation id in the Conversation variable.",
+      "datasource": { "type": "tempo", "uid": "${tempoDs}" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 34 },
+      "options": { "showHeader": true, "cellHeight": "sm" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "tempo", "uid": "${tempoDs}" }, "queryType": "traceql", "tableType": "traces", "limit": 50, "query": "{ span.gen_ai.conversation.id =~ \".*$conversation.*\" }" }
+      ]
+    }
+  ]
+}

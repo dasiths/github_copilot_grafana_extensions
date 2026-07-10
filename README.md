@@ -40,7 +40,8 @@ projects an estimated USD cost onto every span that carries token usage, so cost
 is available to any panel without per-dashboard math. See
 [docs/cost-and-metrics.md](docs/cost-and-metrics.md) for the model. The
 [agent-graph](agent-graph/) sidecar walks Tempo traces to build the agent
-topology (parent agent → subagent) for the Agent Graph dashboard.
+topology, per-conversation summaries, and per-agent timelines for the Agent Graph
+and Agent Timeline dashboards.
 
 ## Prerequisites
 
@@ -97,6 +98,7 @@ docker compose down -v       # also delete the persisted data volume
 | [Tools & Agent Activity](grafana/dashboards/copilot-tools-activity.json) | Metrics (Prometheus) | VS Code |
 | [Agents](grafana/dashboards/copilot-agents.json) | Metrics (Prometheus) | Both |
 | [Agent Graph](grafana/dashboards/copilot-agent-graph.json) | Traces via `agent-graph` sidecar (Infinity) | Both |
+| [Agent Timeline](grafana/dashboards/copilot-agent-timeline.json) | Traces via `agent-graph` sidecar (Infinity) | Both |
 
 See [docs/dashboards.md](docs/dashboards.md) for what each dashboard shows, the
 Cost & Sessions data model, metric naming, and how to add your own.

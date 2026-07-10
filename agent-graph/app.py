@@ -215,27 +215,264 @@ def build_graph(start: int, end: int) -> dict:
     return {"nodes": node_frame, "edges": edge_frame}
 
 
+# --- Conversation + timeline builders (Agent Timeline dashboard) ------------
+def _end_seconds(span: dict) -> float:
+    try:
+        return int(span.get("endTimeUnixNano", "0")) / 1e9
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _is_error(span: dict) -> bool:
+    return span.get("status", {}).get("code") == "STATUS_CODE_ERROR"
+
+
+def _root_conversation(spans: dict):
+    """(conversation_id, root_agent) of the top-level invoke_agent in a trace.
+
+    A trace holds one user turn: a root invoke_agent (the foreground agent) plus
+    nested subagent invoke_agent spans that each carry their OWN conversation id.
+    The episode key is the ROOT invoke_agent's conversation id.
+    """
+    fallback = (None, None)
+    for sp in spans.values():
+        if _attr(sp, "gen_ai.operation.name") != "invoke_agent":
+            continue
+        fallback = (_attr(sp, "gen_ai.conversation.id"), _attr(sp, "gen_ai.agent.name"))
+        cur = spans.get(sp.get("parentSpanId")) if sp.get("parentSpanId") else None
+        seen = set()
+        is_root = True
+        while cur is not None and cur.get("spanId") not in seen:
+            seen.add(cur.get("spanId"))
+            if _attr(cur, "gen_ai.operation.name") == "invoke_agent":
+                is_root = False
+                break
+            cur = spans.get(cur.get("parentSpanId")) if cur.get("parentSpanId") else None
+        if is_root:
+            return _attr(sp, "gen_ai.conversation.id"), _attr(sp, "gen_ai.agent.name")
+    return fallback
+
+
+def build_conversations(start: int, end: int, failures_only: bool = False,
+                        conversation: str = "") -> dict:
+    convs: dict[str, dict] = {}
+    for tid in _search_trace_ids(start, end):
+        try:
+            trace = _fetch_trace(tid, start, end)
+        except Exception:
+            continue
+        spans = _index_spans(trace)
+        cid, root_agent = _root_conversation(spans)
+        if not cid:
+            continue
+        if conversation and cid != conversation:
+            continue
+        c = convs.get(cid)
+        if c is None:
+            c = {
+                "conversation_id": cid, "root_agent": root_agent or "unknown",
+                "agents": set(), "traces": 0, "invocations": 0, "model_calls": 0,
+                "tool_calls": 0, "failures": 0, "cost_usd": 0.0,
+                "tokens_in": 0.0, "tokens_out": 0.0,
+                "start_ms": None, "end_ms": None,
+            }
+            convs[cid] = c
+        c["traces"] += 1
+        for sp in spans.values():
+            s = _start_seconds(sp)
+            if not (start <= s <= end):
+                continue
+            e = _end_seconds(sp)
+            st_ms, en_ms = int(s * 1000), int(e * 1000)
+            c["start_ms"] = st_ms if c["start_ms"] is None else min(c["start_ms"], st_ms)
+            c["end_ms"] = en_ms if c["end_ms"] is None else max(c["end_ms"], en_ms)
+            if _is_error(sp):
+                c["failures"] += 1
+            op = _attr(sp, "gen_ai.operation.name")
+            if op == "invoke_agent":
+                c["invocations"] += 1
+                ag = _attr(sp, "gen_ai.agent.name")
+                if ag:
+                    c["agents"].add(ag)
+                c["cost_usd"] += _num(sp, "gen_ai.usage.cost_usd")
+                c["tokens_in"] += _num(sp, "gen_ai.usage.input_tokens")
+                c["tokens_out"] += _num(sp, "gen_ai.usage.output_tokens")
+            elif op == "chat":
+                c["model_calls"] += 1
+            elif op == "execute_tool":
+                c["tool_calls"] += 1
+    rows = []
+    for c in convs.values():
+        dur = ((c["end_ms"] or 0) - (c["start_ms"] or 0)) / 1000.0
+        rows.append({
+            "conversation_id": c["conversation_id"],
+            "root_agent": c["root_agent"],
+            "agents": ", ".join(sorted(c["agents"])),
+            "agent_count": len(c["agents"]),
+            "traces": c["traces"],
+            "invocations": c["invocations"],
+            "model_calls": c["model_calls"],
+            "tool_calls": c["tool_calls"],
+            "failures": c["failures"],
+            "duration_s": round(dur, 2),
+            "cost_usd": round(c["cost_usd"], 4),
+            "tokens_in": int(c["tokens_in"]),
+            "tokens_out": int(c["tokens_out"]),
+            "tokens_total": int(c["tokens_in"] + c["tokens_out"]),
+            "start_ms": c["start_ms"] or 0,
+            "end_ms": c["end_ms"] or 0,
+        })
+    rows.sort(key=lambda r: r["end_ms"], reverse=True)
+    if failures_only:
+        rows = [r for r in rows if r["failures"] > 0]
+    return {"conversations": rows}
+
+
+def build_timeline(conversation: str, start: int, end: int) -> dict:
+    items = []
+    for tid in _search_trace_ids(start, end):
+        try:
+            trace = _fetch_trace(tid, start, end)
+        except Exception:
+            continue
+        spans = _index_spans(trace)
+        cid, _ = _root_conversation(spans)
+        if conversation and cid != conversation:
+            continue
+        for sp in spans.values():
+            op = _attr(sp, "gen_ai.operation.name")
+            if op not in ("invoke_agent", "execute_tool", "chat"):
+                continue
+            s = _start_seconds(sp)
+            e = _end_seconds(sp)
+            if e < s:
+                e = s
+            owner = _owner_agent(sp, spans) or "unknown"
+            label = {
+                "invoke_agent": _attr(sp, "gen_ai.agent.name") or owner,
+                "execute_tool": _attr(sp, "gen_ai.tool.name") or "tool",
+                "chat": _attr(sp, "gen_ai.request.model") or "chat",
+            }.get(op, op)
+            items.append({
+                "agent": owner,
+                "op": op,
+                "label": label,
+                "status": "error" if _is_error(sp) else "ok",
+                "start_ms": int(s * 1000),
+                "end_ms": int(e * 1000),
+                "duration_ms": int((e - s) * 1000),
+            })
+    items.sort(key=lambda r: r["start_ms"])
+    return {"timeline": items}
+
+
+def build_timeline_states(conversation: str, start: int, end: int,
+                          detail: bool = False) -> dict:
+    """Wide, time-indexed frame for the State timeline panel.
+
+    Default: one lane per agent, active/error over its invoke_agent intervals.
+    detail=True: one lane per (agent, category) where category is invoke / llm /
+    tool, so each agent decomposes into Agent Invocation, LLM Operations, and
+    Tool Calls sub-lanes (colored green/purple/blue, error red).
+    """
+    # category -> value string shown (and color-mapped) in the panel
+    cat_of = {"invoke_agent": "invoke", "chat": "llm", "execute_tool": "tool"}
+    intervals = []  # (lane, start_ms, end_ms, value, trace_id)
+    lanes = set()
+    for tid in _search_trace_ids(start, end):
+        try:
+            trace = _fetch_trace(tid, start, end)
+        except Exception:
+            continue
+        spans = _index_spans(trace)
+        cid, _ = _root_conversation(spans)
+        if conversation and cid != conversation:
+            continue
+        for sp in spans.values():
+            op = _attr(sp, "gen_ai.operation.name")
+            if detail:
+                if op not in cat_of:
+                    continue
+                owner = _owner_agent(sp, spans) or "unknown"
+                cat = cat_of[op]
+                lane = f"{owner} \u00b7 {cat}"
+                value = "error" if _is_error(sp) else cat
+            else:
+                if op != "invoke_agent":
+                    continue
+                lane = _attr(sp, "gen_ai.agent.name") or "unknown"
+                value = "error" if _is_error(sp) else "active"
+            s = int(_start_seconds(sp) * 1000)
+            e = int(_end_seconds(sp) * 1000)
+            if e < s:
+                e = s
+            intervals.append((lane, s, e, value, tid))
+            lanes.add(lane)
+    if not intervals:
+        return {"states": [], "lanes": []}
+    points = sorted({p for iv in intervals for p in (iv[1], iv[2])})
+    lanes = sorted(lanes)
+    rows = []
+    for i in range(len(points) - 1):
+        t0, t1 = points[i], points[i + 1]
+        row = {"time": t0}
+        seg_trace = None
+        for lane in lanes:
+            value = None
+            for (ln, s, e, v, tr) in intervals:
+                if ln == lane and s <= t0 and e >= t1:
+                    value = "error" if (v == "error" or value == "error") else v
+                    seg_trace = tr
+            row[lane] = value
+        row["traceid"] = seg_trace
+        rows.append(row)
+    rows.append({"time": points[-1], "traceid": None, **{lane: None for lane in lanes}})
+    return {"states": rows, "lanes": lanes}
+
+
 # --- Cache (short TTL + single-flight) -------------------------------------
 _cache_lock = threading.Lock()
 _cache: dict[tuple, tuple] = {}  # key -> (expires_at, payload)
 
 
-def graph_for(start: int, end: int) -> dict:
-    key = (start // CACHE_BUCKET, end // CACHE_BUCKET)
+def _cached(key: tuple, builder, empty):
+    """Short-TTL, single-flight cache; serve stale on error, else `empty`."""
     now = time.time()
     with _cache_lock:
         hit = _cache.get(key)
         if hit and hit[0] > now:
             return hit[1]
         try:
-            payload = build_graph(start, end)
+            payload = builder()
             _cache[key] = (now + CACHE_TTL, payload)
             return payload
         except Exception:
-            # Serve stale on error if we have anything; else empty frames.
             if hit:
                 return hit[1]
-            return {"nodes": [], "edges": []}
+            return empty
+
+
+def graph_for(start: int, end: int) -> dict:
+    key = ("graph", start // CACHE_BUCKET, end // CACHE_BUCKET)
+    return _cached(key, lambda: build_graph(start, end), {"nodes": [], "edges": []})
+
+
+def conversations_for(start: int, end: int, failures_only: bool = False,
+                      conversation: str = "") -> dict:
+    key = ("conv", failures_only, conversation, start // CACHE_BUCKET, end // CACHE_BUCKET)
+    return _cached(key, lambda: build_conversations(start, end, failures_only, conversation),
+                   {"conversations": []})
+
+
+def timeline_for(conversation: str, start: int, end: int) -> dict:
+    key = ("timeline", conversation, start // CACHE_BUCKET, end // CACHE_BUCKET)
+    return _cached(key, lambda: build_timeline(conversation, start, end), {"timeline": []})
+
+
+def timeline_states_for(conversation: str, start: int, end: int, detail: bool = False) -> dict:
+    key = ("states", detail, conversation, start // CACHE_BUCKET, end // CACHE_BUCKET)
+    return _cached(key, lambda: build_timeline_states(conversation, start, end, detail),
+                   {"states": [], "lanes": []})
 
 
 # --- HTTP server -----------------------------------------------------------
@@ -254,16 +491,29 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path in ("/health", "/healthz"):
             self._send(200, b'{"status":"ok"}')
             return
-        if parsed.path not in ("/graph.json", "/graph"):
-            self._send(404, b'{"error":"not found"}')
-            return
         qs = urllib.parse.parse_qs(parsed.query)
         now = int(time.time())
         end = _coerce_epoch(qs.get("to", [None])[0], now)
         start = _coerce_epoch(qs.get("from", [None])[0], end - DEFAULT_LOOKBACK)
         if start >= end:
             start = end - DEFAULT_LOOKBACK
-        payload = graph_for(start, end)
+
+        if parsed.path in ("/graph.json", "/graph"):
+            payload = graph_for(start, end)
+        elif parsed.path in ("/conversations.json", "/conversations"):
+            failures_only = qs.get("failures_only", [""])[0] in ("1", "true", "yes")
+            conversation = qs.get("conversation", [""])[0]
+            payload = conversations_for(start, end, failures_only, conversation)
+        elif parsed.path in ("/timeline.json", "/timeline"):
+            conversation = qs.get("conversation", [""])[0]
+            payload = timeline_for(conversation, start, end)
+        elif parsed.path in ("/timeline_states.json", "/timeline_states"):
+            conversation = qs.get("conversation", [""])[0]
+            detail = qs.get("detail", [""])[0] in ("1", "true", "yes")
+            payload = timeline_states_for(conversation, start, end, detail)
+        else:
+            self._send(404, b'{"error":"not found"}')
+            return
         self._send(200, json.dumps(payload).encode("utf-8"))
 
     def log_message(self, *args) -> None:  # keep logs quiet

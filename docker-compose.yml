@@ -18,9 +18,9 @@ services:
       # Land on the Cost & Sessions dashboard (tokens + cost) when opening Grafana.
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /otel-lgtm/grafana/conf/provisioning/dashboards/custom/copilot-cost-sessions.json
       # Preinstall the Infinity datasource (>= 2.7.1 for backend time macros) so
-      # the Agent Graph dashboard can read the agent-graph sidecar. SYNC installs
-      # before Grafana starts, so provisioning finds the plugin. Needs outbound
-      # internet on first start to download the plugin.
+      # the Agent Graph and Agent Timeline dashboards can read the agent-graph
+      # sidecar. SYNC installs before Grafana starts, so provisioning finds the
+      # plugin. Needs outbound internet on first start to download the plugin.
       GF_PLUGINS_PREINSTALL_SYNC: yesoreyeram-infinity-datasource
     volumes:
       # Provider config that tells Grafana where to find our custom dashboards.

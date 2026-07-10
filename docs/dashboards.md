@@ -1,6 +1,6 @@
 # Dashboards
 
-The stack provisions five dashboards into the **GitHub Copilot** folder in
+The stack provisions six dashboards into the **GitHub Copilot** folder in
 Grafana. This page describes each one, explains the Cost & Sessions data model,
 covers Prometheus metric naming, and shows how to add your own dashboards.
 
@@ -13,6 +13,7 @@ covers Prometheus metric naming, and shows how to add your own dashboards.
 | GitHub Copilot - Cost & Sessions | [copilot-cost-sessions.json](../grafana/dashboards/copilot-cost-sessions.json) | Spans (Tempo) | Both (CLI + VS Code) | **Home dashboard.** Estimated USD cost + tokens up top, then Sessions / Agent invocations / Requests tables (tokens, cache, `cost_usd`), with **Source**, **Model**, and **Session** filters |
 | GitHub Copilot - Agents | [copilot-agents.json](../grafana/dashboards/copilot-agents.json) | Metrics (Prometheus) | Both (CLI + VS Code) | Per-agent breakdown (`gen_ai.agent.name`): invocations, cost, tokens, duration p95, and activity over time. Most useful with multi-agent CLI runs (subagents via the `task` tool) |
 | GitHub Copilot - Agent Graph | [copilot-agent-graph.json](../grafana/dashboards/copilot-agent-graph.json) | Traces via the `agent-graph` sidecar (Infinity) | Both (CLI + VS Code) | Node Graph of the agent topology: nodes = agents, directed edges = parent agent → subagent, with per-node invocations, cost, tokens, and tool calls |
+| GitHub Copilot - Agent Timeline | [copilot-agent-timeline.json](../grafana/dashboards/copilot-agent-timeline.json) | Traces via the `agent-graph` sidecar (Infinity) | Both (CLI + VS Code) | Conversation-first view: per-conversation summary table (duration, model/tool calls, agents, cost, **failures**) with a **Failures only** toggle, plus a per-agent swim-lane timeline |
 
 Both metric surfaces share the same `gen_ai.*` token and duration metrics, so the
 Overview dashboard covers VS Code and the CLI together; its **Source (service)**
@@ -90,6 +91,60 @@ panel with two queries (`nodes` and `edges`).
   image).
 - Most useful with multi-agent runs, where subagents (VS Code `runSubagent` or
   the CLI `task` tool) report under their own agent name.
+
+## GitHub Copilot - Agent Timeline
+
+The Agent Timeline dashboard is a **conversation-first** view, inspired by
+agent-timeline tools: it makes whole multi-agent conversations, and their
+failures, the unit of investigation.
+
+- **Conversation summary cards** — headline stats for the conversation selected
+  in the **Conversation** variable: duration, traces, LLM calls, tool calls,
+  **failures** (red when > 0), and total tokens. With the box empty they
+  aggregate across all conversations in range.
+- **Conversations table** — one row per conversation, grouped by the *root*
+  agent's `gen_ai.conversation.id` (a trace holds one turn: a root `invoke_agent`
+  plus nested subagent `invoke_agent` spans that each carry their own
+  conversation id, so the sidecar keys on the root). Columns: agents involved,
+  invocations, model calls (`chat`), tool calls (`execute_tool`), **failures**
+  (spans with `STATUS_CODE_ERROR`, highlighted red), duration, cost, and tokens.
+- **Failures only** — the **View** variable adds `failures_only=1` to the sidecar
+  request so the table shows only conversations that contain a failure.
+- **Click to filter** — click a conversation id in the table to filter the
+  whole dashboard (table, summary cards, swim lanes, and traces) to that
+  conversation (a table data link sets the `conversation` variable); the **Show
+  all conversations** link in the About panel clears it again. With no
+  conversation selected the table lists every conversation and the traces panel
+  shows all traces in range.
+- **Swim lanes** — paste a conversation id into the **Conversation** variable to
+  render a per-agent [State timeline](https://grafana.com/docs/grafana/latest/panels-visualizations/visualizations/state-timeline/).
+  Each agent decomposes into three lanes — **Agent invocation** (green), **LLM
+  operations** (purple), and **Tool calls** (blue) — active over the matching
+  spans, with failing spans in **red**. This shows parallel execution and
+  parent → subagent handoffs over time. **Click a block** to open that segment's
+  trace **span waterfall** in Explore (the sidecar tags each segment with its
+  `traceid`, and a panel data link opens it on the Tempo datasource).
+- **Traces in conversation** — a Tempo table of the conversation's traces
+  (matched on `gen_ai.conversation.id`); click a Trace ID to open the full span
+  **waterfall**.
+
+The data comes from the [agent-graph](../agent-graph/) sidecar, which serves
+these JSON endpoints consumed via Infinity, all windowed to the dashboard time
+range (`?from=&to=` unix seconds):
+
+| Endpoint | Feeds | Shape |
+|----------|-------|-------|
+| `/conversations.json` (opt. `?conversation=`, `?failures_only=1`) | Summary cards + Conversations table | `{"conversations": [ ... ]}` |
+| `/timeline_states.json?conversation=<id>&detail=1` | Swim-lane State timeline | wide `{"states": [ {"time", "<agent> · <cat>": "invoke"/"llm"/"tool"/"error"/null } ]}` |
+| `/timeline.json?conversation=<id>` | raw per-span intervals | `{"timeline": [ ... ]}` |
+| `/graph.json` | Agent Graph Node Graph | `{"nodes": [], "edges": []}` |
+
+The conversation's trace **waterfall** itself comes straight from the Tempo
+datasource (not the sidecar), via the Traces panel's TraceQL query.
+
+The swim lanes use the built-in State timeline panel rather than a Gantt plugin,
+because the community Gantt panel is unmaintained and does not load on current
+Grafana.
 
 ## Metric naming note
 
