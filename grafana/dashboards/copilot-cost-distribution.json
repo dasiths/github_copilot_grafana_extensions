@@ -1,0 +1,272 @@
+{
+  "uid": "copilot-cost-distribution",
+  "title": "GitHub Copilot - Cost Distribution by Agent",
+  "tags": ["copilot", "genai", "otel", "cost", "estimator"],
+  "editable": true,
+  "schemaVersion": 39,
+  "links": [
+    { "title": "Dashboards", "type": "dashboards", "tags": ["copilot"], "asDropdown": true, "includeVars": false, "keepTime": true, "targetBlank": false, "icon": "apps" }
+  ],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-7d", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "unit",
+        "label": "Cost per",
+        "description": "session = one conversation/task (sum of its invocations); invocation = one agent turn.",
+        "type": "custom",
+        "query": "Per session : session, Per invocation : invocation",
+        "current": { "text": "Per session", "value": "session" },
+        "includeAll": false,
+        "multi": false
+      },
+      {
+        "name": "agent",
+        "label": "Agent",
+        "description": "Scope the distribution to one agent. All pools every agent.",
+        "type": "query",
+        "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+        "query": {
+          "queryType": "infinity",
+          "refId": "variable",
+          "infinityQuery": {
+            "refId": "variable",
+            "type": "json",
+            "source": "url",
+            "parser": "backend",
+            "url": "http://agent-insights:8099/cost_distribution.json?unit=${unit}&from=${__from:date:seconds}&to=${__to:date:seconds}",
+            "url_options": { "method": "GET", "data": "" },
+            "root_selector": "stats",
+            "format": "table",
+            "columns": [
+              { "selector": "agent", "text": "__text", "type": "string" },
+              { "selector": "agent", "text": "__value", "type": "string" }
+            ]
+          }
+        },
+        "includeAll": true,
+        "allValue": "__all__",
+        "current": { "text": "All", "value": "$__all" },
+        "multi": false,
+        "refresh": 2,
+        "sort": 1
+      },
+      {
+        "name": "model",
+        "label": "Model",
+        "description": "Scope to one model. Cost is dominated by model choice, so pick a model for a clean single-mode distribution.",
+        "type": "query",
+        "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+        "query": {
+          "queryType": "infinity",
+          "refId": "variable",
+          "infinityQuery": {
+            "refId": "variable",
+            "type": "json",
+            "source": "url",
+            "parser": "backend",
+            "url": "http://agent-insights:8099/cost_distribution.json?unit=${unit}&from=${__from:date:seconds}&to=${__to:date:seconds}",
+            "url_options": { "method": "GET", "data": "" },
+            "root_selector": "stats",
+            "format": "table",
+            "columns": [
+              { "selector": "model", "text": "__text", "type": "string" },
+              { "selector": "model", "text": "__value", "type": "string" }
+            ]
+          }
+        },
+        "includeAll": true,
+        "allValue": "__all__",
+        "current": { "text": "All", "value": "$__all" },
+        "multi": false,
+        "refresh": 2,
+        "sort": 1
+      },
+      {
+        "name": "perDay",
+        "label": "Runs per day",
+        "description": "Expected sessions (or invocations) per day, used only for the monthly projection.",
+        "type": "textbox",
+        "query": "10",
+        "current": { "text": "10", "value": "10" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "text",
+      "title": "About",
+      "gridPos": { "h": 5, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "**Cost distribution per agent** from the empirical spread of `gen_ai.usage.cost_usd`, to estimate what an agent might cost. Each sample is one **run**, set by **Cost per**: a **session** (a whole task — cost summed across its invocations and **attributed to the foreground agent**, so sub-agents like Researcher / Explore are folded in; a task spanning models shows as `(mixed)`) or a single **invocation** (one agent turn — every agent, **including sub-agents**, appears with its own model). Cost is heavy-tailed, so read the **median (p50)** as *typical* and **p90 / p99** as *bad days*, not the mean. **Pick a Model** (cost is model-dominated) and widen the range for a stabler estimate. Projections multiply p50 / p90 by **Runs per day** × 30. Indicative, from *your own* history — a new user's task complexity, context, and tool use will differ, and cost is the collector's model-priced estimate, not billed dollars."
+      }
+    },
+    {
+      "type": "stat", "title": "Typical (p50)",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 2 } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" }, "colorMode": "value", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-insights:8099/cost_distribution.json?unit=${unit}&agent=${agent}&model=${model}&per_day=${perDay}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "summary", "format": "table", "columns": [ { "selector": "p50", "text": "p50", "type": "number" } ] } ]
+    },
+    {
+      "type": "stat", "title": "p90 (bad day)",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 2 } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" }, "colorMode": "value", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-insights:8099/cost_distribution.json?unit=${unit}&agent=${agent}&model=${model}&per_day=${perDay}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "summary", "format": "table", "columns": [ { "selector": "p90", "text": "p90", "type": "number" } ] } ]
+    },
+    {
+      "type": "stat", "title": "p99 (worst case)",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 2 } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" }, "colorMode": "value", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-insights:8099/cost_distribution.json?unit=${unit}&agent=${agent}&model=${model}&per_day=${perDay}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "summary", "format": "table", "columns": [ { "selector": "p99", "text": "p99", "type": "number" } ] } ]
+    },
+    {
+      "type": "stat", "title": "Max seen",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 2 } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" }, "colorMode": "none", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-insights:8099/cost_distribution.json?unit=${unit}&agent=${agent}&model=${model}&per_day=${perDay}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "summary", "format": "table", "columns": [ { "selector": "max", "text": "max", "type": "number" } ] } ]
+    },
+    {
+      "type": "stat", "title": "Mean (skew check)",
+      "description": "Mean vs median: a mean well above p50 confirms a right-skewed, outlier-driven distribution.",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 2 } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" }, "colorMode": "none", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-insights:8099/cost_distribution.json?unit=${unit}&agent=${agent}&model=${model}&per_day=${perDay}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "summary", "format": "table", "columns": [ { "selector": "mean", "text": "mean", "type": "number" } ] } ]
+    },
+    {
+      "type": "stat", "title": "Samples (n)",
+      "description": "Number of runs in the distribution. Small n = noisy percentiles; widen the time range.",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "thresholds": { "mode": "absolute", "steps": [ { "value": null, "color": "orange" }, { "value": 30, "color": "green" } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" }, "colorMode": "value", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-insights:8099/cost_distribution.json?unit=${unit}&agent=${agent}&model=${model}&per_day=${perDay}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "summary", "format": "table", "columns": [ { "selector": "n", "text": "n", "type": "number" } ] } ]
+    },
+    {
+      "type": "barchart",
+      "title": "Cost distribution (log buckets)",
+      "description": "How often a run falls in each cost band, over the selected filter. Right-skew is expected — most runs are cheap, a few are expensive.",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 10, "w": 16, "x": 0, "y": 9 },
+      "options": {
+        "orientation": "vertical",
+        "xTickLabelRotation": -45,
+        "showValue": "auto",
+        "stacking": "none",
+        "legend": { "showLegend": false },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 0, "color": { "mode": "continuous-BlPu" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "url": "http://agent-insights:8099/cost_distribution.json?unit=${unit}&agent=${agent}&model=${model}&per_day=${perDay}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}",
+          "url_options": { "method": "GET", "data": "" },
+          "root_selector": "histogram",
+          "format": "table",
+          "columns": [
+            { "selector": "bucket", "text": "Cost band", "type": "string" },
+            { "selector": "count", "text": "Runs", "type": "number" }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "stat", "title": "Projected monthly (typical)",
+      "description": "median cost per run × Runs per day × 30.",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 9 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 0 } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" }, "colorMode": "value", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-insights:8099/cost_distribution.json?unit=${unit}&agent=${agent}&model=${model}&per_day=${perDay}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "summary", "format": "table", "columns": [ { "selector": "proj_monthly_p50", "text": "proj", "type": "number" } ] } ]
+    },
+    {
+      "type": "stat", "title": "Projected monthly (busy, p90)",
+      "description": "p90 cost per run × Runs per day × 30 — a conservative upper band.",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "orange" } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" }, "colorMode": "value", "graphMode": "none" },
+      "targets": [ { "refId": "A", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" }, "type": "json", "source": "url", "parser": "backend", "url": "http://agent-insights:8099/cost_distribution.json?unit=${unit}&agent=${agent}&model=${model}&per_day=${perDay}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}", "url_options": { "method": "GET", "data": "" }, "root_selector": "summary", "format": "table", "columns": [ { "selector": "proj_monthly_p90", "text": "proj", "type": "number" } ] } ]
+    },
+    {
+      "type": "table",
+      "title": "Distribution by agent \u00b7 model",
+      "description": "Per agent \u00d7 model cost distribution for the selected unit and range. Compare typical (p50) vs tail (p90/p99) and sample count (n).",
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+      "gridPos": { "h": 11, "w": 24, "x": 0, "y": 19 },
+      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": false } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "infinity" },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "url": "http://agent-insights:8099/cost_distribution.json?unit=${unit}&agent=${agent}&model=${model}&per_day=${perDay}&from=${__timeFrom:date:seconds}&to=${__timeTo:date:seconds}",
+          "url_options": { "method": "GET", "data": "" },
+          "root_selector": "stats",
+          "format": "table",
+          "columns": [
+            { "selector": "agent", "text": "Agent", "type": "string" },
+            { "selector": "model", "text": "Model", "type": "string" },
+            { "selector": "n", "text": "n", "type": "number" },
+            { "selector": "p50", "text": "p50 (typical)", "type": "number" },
+            { "selector": "p90", "text": "p90", "type": "number" },
+            { "selector": "p99", "text": "p99", "type": "number" },
+            { "selector": "max", "text": "Max", "type": "number" },
+            { "selector": "mean", "text": "Mean", "type": "number" },
+            { "selector": "total", "text": "Total", "type": "number" },
+            { "selector": "proj_monthly_p50", "text": "Proj/mo (p50)", "type": "number" },
+            { "selector": "proj_monthly_p90", "text": "Proj/mo (p90)", "type": "number" }
+          ]
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "Agent": 0, "Model": 1, "n": 2, "p50 (typical)": 3, "p90": 4,
+              "p99": 5, "Max": 6, "Mean": 7, "Total": 8,
+              "Proj/mo (p50)": 9, "Proj/mo (p90)": 10
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "filterable": true } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Agent" }, "properties": [ { "id": "custom.width", "value": 220 } ] },
+          { "matcher": { "id": "byRegexp", "options": "p50 .typical.|p90|p99|Max|Mean|Total|Proj.*" }, "properties": [ { "id": "unit", "value": "currencyUSD" }, { "id": "decimals", "value": 2 } ] },
+          {
+            "matcher": { "id": "byName", "options": "p50 (typical)" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+              { "id": "color", "value": { "mode": "continuous-GrYlRd" } }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

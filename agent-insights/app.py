@@ -11,6 +11,7 @@ produce directly, consumed by the Agent Graph, Agent Timeline, and Cost by Repo
     /timeline_states.json  per-agent swim-lane state frames
   * /branches.json         cost / tokens / sessions per git repo · branch
   * /branch_series.json    cost over time per git repo · branch
+  * /cost_distribution.json  cost distribution + percentiles per agent (estimator)
 
 The agent *graph* is the hardest case and motivates the whole sidecar: all
 GitHub Copilot agents share one service.name, subagent spans are span-kind
@@ -530,6 +531,172 @@ def build_branch_series(start: int, end: int, buckets: int = 48) -> dict:
     return {"series": rows, "lanes": series_list}
 
 
+# --- Cost distribution / estimator (Agent Cost Estimator dashboard) ---------
+# Half-decade log bucket edges ($): heavy-tailed cost reads better on a log axis
+# than on the linear buckets Grafana's native histogram panel would use.
+_COST_BUCKET_EDGES = [
+    0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1, 3, 10, 30, 100, 300, 1000,
+]
+
+
+def _percentile(sorted_vals: list[float], q: float) -> float:
+    """Linear-interpolation percentile of an already-sorted list."""
+    if not sorted_vals:
+        return 0.0
+    if len(sorted_vals) == 1:
+        return sorted_vals[0]
+    idx = (len(sorted_vals) - 1) * q
+    lo = int(idx)
+    hi = min(lo + 1, len(sorted_vals) - 1)
+    return sorted_vals[lo] * (1 - (idx - lo)) + sorted_vals[hi] * (idx - lo)
+
+
+def _money(x: float) -> str:
+    if x < 0.01:
+        return f"${x:.3f}"
+    if x < 1:
+        return f"${x:.2f}"
+    return f"${x:,.0f}"
+
+
+def _dist_stats(vals: list[float], per_day: float) -> dict:
+    """n / mean / stddev / min / percentiles / max / total of a cost sample set,
+    plus an optional monthly projection band from p50 and p90."""
+    vals = sorted(vals)
+    n = len(vals)
+    total = sum(vals)
+    mean = total / n if n else 0.0
+    var = sum((v - mean) ** 2 for v in vals) / n if n > 1 else 0.0
+    p50 = _percentile(vals, 0.5)
+    p90 = _percentile(vals, 0.9)
+    row = {
+        "n": n,
+        "min": round(vals[0], 4) if vals else 0.0,
+        "p50": round(p50, 4),
+        "p90": round(p90, 4),
+        "p95": round(_percentile(vals, 0.95), 4),
+        "p99": round(_percentile(vals, 0.99), 4),
+        "max": round(vals[-1], 4) if vals else 0.0,
+        "mean": round(mean, 4),
+        "stddev": round(var ** 0.5, 4),
+        "total": round(total, 4),
+    }
+    if per_day > 0:
+        row["proj_monthly_p50"] = round(p50 * per_day * 30, 2)
+        row["proj_monthly_p90"] = round(p90 * per_day * 30, 2)
+    return row
+
+
+def build_cost_distribution(start: int, end: int, unit: str = "session",
+                            agent: str = "", model: str = "",
+                            per_day: float = 0.0) -> dict:
+    """Distribution of cost per agent run, for the Agent Cost Estimator.
+
+    unit="session": one sample per conversation (root gen_ai.conversation.id),
+    cost summed across its invoke_agent spans (so sub-agent cost is folded into
+    the task), attributed to the session's root agent. The model is the single
+    model used, or "(mixed)" when a task spanned models. This is the "cost per
+    task" unit and only shows foreground agents.
+    unit="invocation": one sample per invoke_agent span (cost per agent turn);
+    agent and model are unambiguous, so every agent — including sub-agents like
+    Researcher Subagent or Explore — appears with its own model.
+
+    Returns a pooled `summary` for the current filter (headline stat cards), a
+    per agent x model `stats` breakdown (comparison table), and a log-bucketed
+    `histogram` of the pooled filtered samples (distribution shape).
+    """
+    samples: list[tuple[str, str, float]] = []  # (agent, model, cost)
+    if unit == "invocation":
+        for tid in _search_trace_ids(start, end):
+            try:
+                trace = _fetch_trace(tid, start, end)
+            except Exception:
+                continue
+            for sp in _index_spans(trace).values():
+                if not (start <= _start_seconds(sp) <= end):
+                    continue
+                if _attr(sp, "gen_ai.operation.name") != "invoke_agent":
+                    continue
+                cost = _num(sp, "gen_ai.usage.cost_usd")
+                if cost <= 0:
+                    continue
+                m = str(_attr(sp, "gen_ai.request.model") or "unknown")
+                samples.append((_agent_name(sp), m, cost))
+    else:
+        unit = "session"
+        sess: dict[str, dict] = {}  # root cid -> {agent, model_costs, cost}
+        for tid in _search_trace_ids(start, end):
+            try:
+                trace = _fetch_trace(tid, start, end)
+            except Exception:
+                continue
+            spans = _index_spans(trace)
+            cid, root_agent = _root_conversation(spans)
+            if not cid:
+                continue
+            s = sess.setdefault(cid, {"agent": root_agent or "unknown",
+                                      "model_costs": {}, "cost": 0.0})
+            for sp in spans.values():
+                if not (start <= _start_seconds(sp) <= end):
+                    continue
+                if _attr(sp, "gen_ai.operation.name") != "invoke_agent":
+                    continue
+                cost = _num(sp, "gen_ai.usage.cost_usd")
+                if cost <= 0:
+                    continue
+                s["cost"] += cost
+                m = str(_attr(sp, "gen_ai.request.model") or "unknown")
+                s["model_costs"][m] = s["model_costs"].get(m, 0.0) + cost
+        for s in sess.values():
+            if s["cost"] <= 0:
+                continue
+            mc = s["model_costs"]
+            # A task can span models (root on opus, a subagent on haiku, ...).
+            # Don't pretend it was one model: label multi-model sessions "(mixed)".
+            if not mc:
+                model_label = "unknown"
+            elif len(mc) == 1:
+                model_label = next(iter(mc))
+            else:
+                model_label = "(mixed)"
+            samples.append((s["agent"], model_label, s["cost"]))
+
+    fsamples = [(a, m, c) for (a, m, c) in samples
+                if (not agent or a == agent) and (not model or m == model)]
+
+    # Per agent x model breakdown.
+    groups: dict[tuple, list] = {}
+    for a, m, c in fsamples:
+        groups.setdefault((a, m), []).append(c)
+    stats = []
+    for (a, m), vals in groups.items():
+        row = {"agent": a, "model": m, "group": f"{a} \u00b7 {m}", "unit": unit}
+        row.update(_dist_stats(vals, per_day))
+        stats.append(row)
+    stats.sort(key=lambda r: -r["total"])
+
+    # Pooled summary for the current filter (headline cards).
+    pooled = [c for _, _, c in fsamples]
+    summary = {"unit": unit, "agent": agent or "All", "model": model or "All"}
+    summary.update(_dist_stats(pooled, per_day))
+
+    # Log-bucketed histogram of pooled samples, trimmed to the populated range.
+    costs = sorted(pooled)
+    hist = []
+    if costs:
+        edges = _COST_BUCKET_EDGES
+        for i in range(len(edges) - 1):
+            lo, hi = edges[i], edges[i + 1]
+            cnt = sum(1 for c in costs if lo <= c < hi)
+            hist.append({"bucket": f"{_money(lo)}\u2013{_money(hi)}",
+                         "lo": lo, "hi": hi, "count": cnt})
+        nz = [i for i, b in enumerate(hist) if b["count"] > 0]
+        if nz:
+            hist = hist[nz[0]:nz[-1] + 1]
+    return {"summary": [summary], "stats": stats, "histogram": hist,
+            "unit": unit, "n": len(fsamples)}
+
+
 def build_timeline(conversation: str, start: int, end: int) -> dict:
     items = []
     for tid in _search_trace_ids(start, end):
@@ -686,6 +853,15 @@ def branch_series_for(start: int, end: int) -> dict:
                    {"series": [], "lanes": []})
 
 
+def cost_distribution_for(start: int, end: int, unit: str, agent: str,
+                          model: str, per_day: float) -> dict:
+    key = ("cost_dist", unit, agent, model, round(per_day, 3),
+           start // CACHE_BUCKET, end // CACHE_BUCKET)
+    return _cached(key,
+                   lambda: build_cost_distribution(start, end, unit, agent, model, per_day),
+                   {"summary": [], "stats": [], "histogram": [], "unit": unit, "n": 0})
+
+
 def timeline_for(conversation: str, start: int, end: int) -> dict:
     key = ("timeline", conversation, start // CACHE_BUCKET, end // CACHE_BUCKET)
     return _cached(key, lambda: build_timeline(conversation, start, end), {"timeline": []})
@@ -738,6 +914,15 @@ class Handler(BaseHTTPRequestHandler):
                                         if not (r["repo"] == "unknown" and r["branch"] == "unknown")]}
         elif parsed.path in ("/branch_series.json", "/branch_series"):
             payload = branch_series_for(start, end)
+        elif parsed.path in ("/cost_distribution.json", "/cost_distribution"):
+            unit = "invocation" if qs.get("unit", ["session"])[0] == "invocation" else "session"
+            agent = _no_filter_if_all(qs.get("agent", [""])[0])
+            model = _no_filter_if_all(qs.get("model", [""])[0])
+            try:
+                per_day = float(qs.get("per_day", ["0"])[0])
+            except (TypeError, ValueError):
+                per_day = 0.0
+            payload = cost_distribution_for(start, end, unit, agent, model, per_day)
         elif parsed.path in ("/timeline.json", "/timeline"):
             conversation = qs.get("conversation", [""])[0]
             payload = timeline_for(conversation, start, end)

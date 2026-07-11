@@ -19,6 +19,7 @@ between them while keeping the selected time range.
 | GitHub Copilot - Agent Graph | [copilot-agent-graph.json](../grafana/dashboards/copilot-agent-graph.json) | Traces via the `agent-insights` sidecar (Infinity) | Both (CLI + VS Code) | Node Graph of the agent topology: nodes = agents, directed edges = parent agent → subagent, with per-node invocations, cost, tokens, and tool calls |
 | GitHub Copilot - Agent Timeline | [copilot-agent-timeline.json](../grafana/dashboards/copilot-agent-timeline.json) | Traces via the `agent-insights` sidecar (Infinity) | Both (CLI + VS Code) | Conversation-first view: per-conversation summary table (duration, model/tool calls, agents, cost, **failures**) with a **Failures only** toggle and **Repository** / **Branch** filters, plus a per-agent swim-lane timeline |
 | GitHub Copilot - Cost by Repo & Branch | [copilot-branches.json](../grafana/dashboards/copilot-branches.json) | Traces via the `agent-insights` sidecar (Infinity) | Both (CLI + VS Code) | Cost, tokens, cache reuse, and sessions grouped by git **repository** (primary) and **branch** (secondary), with a cost bar chart, a **cost-over-time** series, and a filterable repo/branch table that links into the Agent Timeline |
+| GitHub Copilot - Cost Distribution by Agent | [copilot-cost-distribution.json](../grafana/dashboards/copilot-cost-distribution.json) | Traces via the `agent-insights` sidecar (Infinity) | Both (CLI + VS Code) | Distribution of cost per **session** or **invocation**, per agent × model: percentiles (p50/p90/p99), a log-bucketed histogram, and a monthly projection — to **estimate** what an agent might cost |
 
 VS Code and the CLI emit the **same `gen_ai.*` token and duration metrics**, and
 the metric dashboards union the surface-specific names where they differ
@@ -237,6 +238,44 @@ dropdowns.
 > Python, and does it without touching the collector — so no `deltatocumulative`
 > metric reset. See [telemetry.md](telemetry.md) for how the CLI branch is set
 > and its per-launch freshness boundary.
+
+## GitHub Copilot - Cost Distribution by Agent
+
+This dashboard answers "**what might this agent cost me?**" by showing the
+**empirical distribution** of `gen_ai.usage.cost_usd`, not just an average.
+Because cost is heavy-tailed, it leads with **percentiles**: read **p50** as
+*typical* and **p90 / p99** as *bad days*.
+
+- **The unit** is set by **Cost per**:
+  - **Per session** — one sample per conversation/task (`gen_ai.conversation.id`
+    of the root turn), cost summed across its invocations. Sub-agent cost is
+    **folded into the foreground agent**, so only top-level agents appear; a task
+    that spanned models shows its model as **`(mixed)`**. This is the "cost per
+    task" view.
+  - **Per invocation** — one sample per `invoke_agent` span (one agent turn).
+    Agent and model are unambiguous, so **every agent appears, including
+    sub-agents** (Researcher Subagent, Explore, …), each split by model.
+- **Segment by Model.** Cost is dominated by model choice, so a distribution
+  mixing models is multi-modal. Pick a **Model** for a clean single-mode shape.
+- **Stat cards** — p50, p90, p99, max, mean (a mean well above p50 confirms the
+  skew), and **n** (sample count; low n = noisy percentiles, so widen the range).
+- **Histogram** — counts per half-decade **log** cost band (`$0.30–$1`, `$1–$3`,
+  …), the natural scale for heavy-tailed cost.
+- **Distribution by agent · model table** — per-group percentiles for comparison.
+- **Monthly projection** — `p50` and `p90` per run × **Runs per day** × 30, as a
+  typical/busy band.
+
+The data comes from one windowed Infinity endpoint:
+
+| Endpoint | Feeds | Shape |
+|----------|-------|-------|
+| `/cost_distribution.json?unit=session\|invocation` (opt. `?agent=`, `?model=`, `?per_day=N`) | Stat cards + histogram + table + agent/model dropdowns | `{"summary": [ {n, p50, p90, p95, p99, max, mean, stddev, total, proj_monthly_p50, proj_monthly_p90} ], "stats": [ {agent, model, group, ...same stats} ], "histogram": [ {bucket, lo, hi, count} ]}` |
+
+Percentiles are computed exactly (linear interpolation over the sorted samples)
+in the sidecar, so no predefined Prometheus histogram buckets are needed. The
+numbers are **indicative**, drawn from your own history — a new user's task
+complexity, context size, and tool use will differ — and cost is the collector's
+model-priced estimate, not billed dollars.
 
 ## Metric naming note
 

@@ -40,8 +40,9 @@ projects an estimated USD cost onto every span that carries token usage, so cost
 is available to any panel without per-dashboard math. See
 [docs/cost-and-metrics.md](docs/cost-and-metrics.md) for the model. The
 [agent-insights](agent-insights/) sidecar walks Tempo traces to build the agent
-topology, per-conversation summaries, per-agent timelines, and per-repo/branch
-cost for the Agent Graph, Agent Timeline, and Cost by Repo & Branch dashboards.
+topology, per-conversation summaries, per-agent timelines, per-repo/branch cost,
+and cost distributions for the Agent Graph, Agent Timeline, Cost by Repo &
+Branch, and Cost Distribution by Agent dashboards.
 
 ## Prerequisites
 
@@ -125,6 +126,7 @@ docker compose down -v       # also delete the persisted data volume
 | [Agent Graph](grafana/dashboards/copilot-agent-graph.json) | Traces via `agent-insights` sidecar (Infinity) | Both |
 | [Agent Timeline](grafana/dashboards/copilot-agent-timeline.json) | Traces via `agent-insights` sidecar (Infinity) | Both |
 | [Cost by Repo & Branch](grafana/dashboards/copilot-branches.json) | Traces via `agent-insights` sidecar (Infinity) | Both |
+| [Cost Distribution by Agent](grafana/dashboards/copilot-cost-distribution.json) | Traces via `agent-insights` sidecar (Infinity) | Both |
 
 See [docs/dashboards.md](docs/dashboards.md) for what each dashboard shows, the
 Cost & Sessions data model, metric naming, and how to add your own.
@@ -154,6 +156,8 @@ Cost & Sessions data model, metric naming, and how to add your own.
 ![GitHub Copilot Cost & Sessions dashboard in Grafana showing estimated USD cost, token and cache totals, and per-session, per-invocation, and per-request tables](docs/screenshots/cost-sessions-dashboard.png)
 
 ![GitHub Copilot Agents dashboard in Grafana showing per-agent totals for invocations, estimated USD cost, and tool calls, with invocations and cost broken down by agent, invocation duration p95, agent activity over time, and token usage by agent](docs/screenshots/agents-dashboard.png)
+
+![GitHub Copilot Cost Distribution by Agent dashboard in Grafana, in per-invocation mode, showing cost percentile stat cards (typical p50, p90, p99, max, mean, and sample count), a log-bucketed cost distribution histogram, projected monthly cost bands, and a per agent by model table of percentiles that includes sub-agents such as Researcher Subagent and Explore](docs/screenshots/cost-distribution-dashboard.png)
 
 ## References
 
