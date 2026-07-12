@@ -13,6 +13,10 @@ produce directly, consumed by the Agent Graph, Agent Timeline, and Cost by Repo
   * /branch_series.json    cost over time per git repo · branch
   * /cost_distribution.json  cost distribution + percentiles per agent (estimator)
 
+Branch attribution (see _trace_repo_branch) coalesces the in-band invoke_agent
+span attrs (github.copilot.git.*, emitted by both VS Code and the current CLI)
+with the older CLI's OTel resource vcs.* fallback.
+
 The agent *graph* is the hardest case and motivates the whole sidecar: all
 GitHub Copilot agents share one service.name, subagent spans are span-kind
 INTERNAL, and no span attribute names the parent agent. The parent -> child
@@ -62,6 +66,10 @@ CACHE_BUCKET = int(os.environ.get("CACHE_BUCKET_SECONDS", "15"))
 SEARCH_LIMIT = int(os.environ.get("TEMPO_SEARCH_LIMIT", "200"))
 HTTP_TIMEOUT = float(os.environ.get("TEMPO_HTTP_TIMEOUT_SECONDS", "20"))
 TRACEQL = os.environ.get("TRACEQL", '{ name=~"invoke_agent.*" }')
+# Optional regex to extract a work-item / story key from a branch name (e.g.
+# "^(?:feature|fix)/([A-Z]+-\\d+)"); when it matches, story = capture group 1,
+# else story = the branch name.
+STORY_PATTERN = os.environ.get("STORY_PATTERN", "").strip()
 
 
 # --- Tempo access ----------------------------------------------------------
@@ -84,6 +92,19 @@ def _fetch_trace(trace_id: str, start: int, end: int) -> dict:
         {"start": start, "end": end}
     )
     return _get_json(url)
+
+
+def _story(branch: str) -> str:
+    """Work-item key for a branch: STORY_PATTERN capture group if it matches,
+    else the branch itself."""
+    if branch and branch != "unknown" and STORY_PATTERN:
+        try:
+            m = re.search(STORY_PATTERN, branch)
+            if m and m.groups():
+                return m.group(1)
+        except re.error:
+            pass
+    return branch
 
 
 # --- OTLP span helpers -----------------------------------------------------
@@ -388,8 +409,13 @@ def _repo_name(raw) -> str | None:
 
 
 def _trace_repo_branch(trace: dict, spans: dict) -> tuple[str, str]:
-    """(repo, branch) for a trace, coalescing the VS Code (span) and CLI
-    (resource) enrichment shapes into a single grouping key."""
+    """(repo, branch) for a trace, coalescing the enrichment shapes into one key.
+
+    Both VS Code and the current Copilot CLI tag the repo/branch in-band on the
+    invoke_agent span (github.copilot.git.*); older CLIs carry it on the OTel
+    resource (vcs.*) via the CLI script. Precedence: span attrs -> resource
+    fallback -> unknown.
+    """
     repo = branch = None
     for sp in spans.values():
         if _attr(sp, "gen_ai.operation.name") != "invoke_agent":
@@ -471,6 +497,7 @@ def build_branches(start: int, end: int) -> dict:
         rows.append({
             "repo": b["repo"],
             "branch": b["branch"],
+            "story": _story(b["branch"]),
             "repo_branch": f"{b['repo']} \u00b7 {b['branch']}",
             "repo_clause": _traceql_clause("repo", b["repo"]),
             "branch_clause": _traceql_clause("branch", b["branch"]),
