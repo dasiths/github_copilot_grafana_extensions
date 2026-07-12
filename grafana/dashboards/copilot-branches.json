@@ -30,7 +30,7 @@
       "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
       "options": {
         "mode": "markdown",
-        "content": "**Cost & usage grouped by git repository (primary) and branch (secondary).** Each row aggregates the Copilot invocations for one `repo \u00b7 branch` over the selected range: cost, tokens, cache reuse, sessions, and the agents involved. Repo/branch is coalesced across surfaces \u2014 VS Code tags it on the `invoke_agent` span (`github.copilot.git.repository` / `github.copilot.git.branch`); the CLI carries it on the OTel resource (`vcs.repository.name` / `vcs.ref.head.name`) via `scripts/copilot-cli-otel.*`. Rows show as **unknown** until the CLI enrichment script is sourced. Use the column filter icons in the table to filter by repo or branch."
+        "content": "**Cost & usage grouped by git repository (primary) and branch (secondary).** Each row aggregates the Copilot invocations for one `repo \u00b7 branch` over the selected range: cost, tokens, cache reuse, sessions, and the agents involved. Both VS Code and the Copilot CLI (\u2265 1.0.71) tag repo/branch **in-band** on the `invoke_agent` span (`github.copilot.git.repository` / `github.copilot.git.branch`), so no setup is needed; the sidecar keeps an OTel resource `vcs.*` fallback for older CLIs. Runs with no git context show as **unknown**. Use the column filter icons in the table to filter by repo or branch."
       }
     },
     {

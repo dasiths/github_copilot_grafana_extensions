@@ -204,21 +204,20 @@ grouping) and **branch** (secondary grouping) the work happened on.
   branch** to open the [Agent Timeline](#github-copilot---agent-timeline) scoped
   to that repo and branch (a data link sets its `repo`/`branch` variables).
 
-The repo/branch key is **coalesced across surfaces** by the
-[agent-insights](../agent-insights/) sidecar, because the two Copilot surfaces tag it
-differently:
+The repo/branch key is **coalesced across sources** by the
+[agent-insights](../agent-insights/) sidecar:
 
-- **VS Code** sets it per `invoke_agent` **span**: `github.copilot.git.repository`
-  (a clone URL) and `github.copilot.git.branch`. No setup required.
-- **The CLI** sets it on the OTel **resource** (`vcs.repository.name` /
-  `vcs.ref.head.name`) once [the enrichment script](../scripts/) is sourced —
-  `_index_spans` in the sidecar discards resource attributes, so `build_branches`
-  reads `trace["batches"][*]["resource"]` directly for CLI rows.
+- **In-band span attrs** (primary): both VS Code and the Copilot CLI (≥ 1.0.71)
+  tag each `invoke_agent` **span** with `github.copilot.git.repository` and
+  `github.copilot.git.branch`. No setup required on either surface.
+- **OTel resource `vcs.*`** (legacy fallback): for pre-1.0.71 CLIs that did not
+  emit git in-band. `_index_spans` discards resource attributes, so
+  `build_branches` reads `trace["batches"][*]["resource"]` directly for those.
 
 The sidecar normalizes both repo shapes to a bare repo name (basename minus
 `.git`) so the same repository groups identically no matter which surface
-produced the telemetry. Rows with no git enrichment (a CLI run before the script
-is sourced) fall into **`unknown · unknown`**.
+produced the telemetry. Runs with no resolvable git context fall into
+**`unknown · unknown`**.
 
 The data comes from two windowed Infinity endpoints:
 

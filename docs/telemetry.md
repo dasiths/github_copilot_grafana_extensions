@@ -79,37 +79,27 @@ The script sets the variables documented in the
 | `OTEL_SERVICE_NAME` | `github-copilot` | Identifies CLI telemetry |
 | `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` | `false` (opt-in) | Capture prompts/responses |
 
-### Tagging telemetry with the git repository and branch
+### Git repository and branch attribution
 
-The script also tags CLI telemetry with the current git repository and branch so
-you can group and filter cost by repo (primary) and branch (secondary) on the
-**Cost by Repo & Branch** dashboard. It sets the vendor-neutral OpenTelemetry
-[VCS resource attributes](https://opentelemetry.io/docs/specs/semconv/attributes-registry/vcs/):
+Both surfaces now tag the git **repository** and **branch** *in-band*, on the
+`invoke_agent` span, so the **Cost by Repo & Branch** dashboard works with no
+extra setup:
 
-| Attribute | Source | Example |
-|-----------|--------|---------|
-| `vcs.repository.name` | `basename` of the remote URL | `github_copilot_grafana_extensions` |
-| `vcs.ref.head.name` | `git rev-parse --abbrev-ref HEAD` | `main` |
-| `vcs.ref.head.revision` | `git rev-parse --short HEAD` | `6c8261c` |
-| `vcs.repository.url.full` | `git config remote.origin.url` | `https://github.com/...` |
+| Attribute | Emitted by | Example |
+|-----------|-----------|---------|
+| `github.copilot.git.repository` | VS Code Chat **and** Copilot CLI ≥ 1.0.71 | `dasiths/github_copilot_grafana_extensions` |
+| `github.copilot.git.branch` | VS Code Chat **and** Copilot CLI ≥ 1.0.71 | `main` |
+| `github.copilot.git.commit_sha` | both | `e521fb4…` |
 
-These go on the OTel **resource** via `OTEL_RESOURCE_ATTRIBUTES`, which the CLI
-reads once at process start. Because a resource is immutable per process, the
-script refreshes the variable before **every shell prompt** (bash `PROMPT_COMMAND`,
-zsh `precmd_functions`, PowerShell wraps the `prompt` function). This means you
-can run `copilot` directly with no wrapper — each launch picks up the branch you
-are currently on. Switch branches with `git checkout`, and the next `copilot`
-run is tagged with the new branch. Any `OTEL_RESOURCE_ATTRIBUTES` you set before
-sourcing the script (for example `team.id=platform`) is preserved and merged.
+This was verified live: a Copilot CLI 1.0.71 session run **without** any
+`OTEL_RESOURCE_ATTRIBUTES` still carries `github.copilot.git.branch` on the span,
+and the `agent-insights` sidecar resolves the repo/branch from it. So the CLI
+script does **not** set any git resource attributes.
 
-> Freshness boundary: the branch is captured at CLI **launch**, not per span. If
-> you switch branches mid-session, restart `copilot` to re-tag. Values are read
-> from whatever directory the shell is in; run `copilot` from inside the repo.
-
-Until the script is sourced, CLI runs carry no git attributes and appear under
-`unknown` on the Cost by Repo & Branch dashboard. VS Code needs no setup — it
-already tags each `invoke_agent` span with `github.copilot.git.repository` and
-`github.copilot.git.branch`.
+> Legacy fallback: for **pre-1.0.71** CLIs that did not emit git in-band, the
+> sidecar still reads the OpenTelemetry `vcs.*` resource attributes
+> (`vcs.repository.name` / `vcs.ref.head.name`) if present. Current clients don't
+> need them, so the script no longer sets them.
 
 ### How the CLI differs from the VS Code extension
 
