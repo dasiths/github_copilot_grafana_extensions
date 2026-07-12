@@ -18,7 +18,7 @@
       "gridPos": { "h": 3, "w": 24, "x": 0, "y": 0 },
       "options": {
         "mode": "markdown",
-        "content": "Aggregate **agent topology** for the selected time range. Nodes are agents (`gen_ai.agent.name`); directed edges are parent agent \u2192 subagent, derived by the `agent-insights` sidecar from the `invoke_agent \u2192 execute_tool(runSubagent/task) \u2192 invoke_agent` hop in Tempo traces. Node stats: invocations, estimated cost, tokens, and tool calls. Most useful with multi-agent runs (subagents via `runSubagent` / the CLI `task` tool)."
+        "content": "Aggregate **agent topology** for the selected time range. Nodes are agents (`gen_ai.agent.name`, falling back to `gen_ai.agent.id` for the CLI); the directed arrow points **parent agent \u2192 subagent**, derived by the `agent-insights` sidecar from the `invoke_agent \u2192 execute_tool(runSubagent/task) \u2192 invoke_agent` hop in Tempo traces. **Click an agent circle to open its traces in Explore.** Node stats: invocations, estimated cost, tokens, and tool calls. Edges appear once the parent turn finishes exporting to Tempo; most useful with multi-agent runs (subagents via `runSubagent` / the CLI `task` tool)."
       }
     },
     {
@@ -30,6 +30,26 @@
       "options": {
         "nodes": { "mainStatUnit": "", "secondaryStatUnit": "" },
         "edges": { "mainStatUnit": "" }
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "title" },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "View this agent's traces in Explore",
+                    "targetBlank": true,
+                    "url": "/explore?schemaVersion=1&panes=%7B%22ag%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20name%3D~%5C%22invoke_agent.%2A%5C%22%20%26%26%20%28span.gen_ai.agent.name%3D%5C%22${__data.fields.detail__match}%5C%22%20%7C%7C%20span.gen_ai.agent.id%3D%5C%22${__data.fields.detail__match}%5C%22%29%20%7D%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D&orgId=1"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       },
       "targets": [
         {
@@ -51,7 +71,8 @@
             { "selector": "detail__cost_usd", "text": "detail__cost_usd", "type": "number" },
             { "selector": "detail__tokens_in", "text": "detail__tokens_in", "type": "number" },
             { "selector": "detail__tokens_out", "text": "detail__tokens_out", "type": "number" },
-            { "selector": "detail__tool_calls", "text": "detail__tool_calls", "type": "number" }
+            { "selector": "detail__tool_calls", "text": "detail__tool_calls", "type": "number" },
+            { "selector": "detail__match", "text": "detail__match", "type": "string" }
           ]
         },
         {

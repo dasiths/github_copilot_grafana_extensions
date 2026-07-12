@@ -53,13 +53,37 @@
   "panels": [
     {
       "type": "stat",
+      "title": "Total cost (est.)",
+      "description": "Estimated spend over the selected range: copilot_cost_usd_total, computed at ingest by the OTel Collector from tokens x per-model rates (see otelcol/otelcol-config.yaml). Uses increase() so it stays correct across collector/counter restarts.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 2 } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "sum(increase(copilot_cost_usd_total{job=~\"$source\", gen_ai_request_model=~\"$model\"}[$__range]))", "legendFormat": "cost" }
+      ]
+    },
+    {
+      "type": "stat",
       "title": "Chat sessions",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(max_over_time(copilot_chat_session_count_total[$__range]))", "legendFormat": "sessions" }
+        { "refId": "A", "expr": "sum(increase(copilot_chat_session_count_total[$__range]))", "legendFormat": "sessions" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Invocations",
+      "description": "invoke_agent invocations across both surfaces (copilot_agent_calls_total). Uses increase() so it stays correct across collector/counter restarts. Not model-scoped, so the Model filter does not change this count.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "sum(increase(copilot_agent_calls_total{gen_ai_operation_name=\"invoke_agent\", job=~\"$source\"}[$__range]))", "legendFormat": "invocations" }
       ]
     },
     {
@@ -67,11 +91,11 @@
       "title": "Input tokens",
       "description": "Per-LLM-call input tokens (gen_ai.client.token.usage). Counts every call, so multi-turn context re-sent each turn is re-counted; expect this to be higher than the per-invocation totals on the Agents dashboard.",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(max_over_time(gen_ai_client_token_usage_sum{gen_ai_token_type=\"input\", gen_ai_request_model=~\"$model\", job=~\"$source\"}[$__range]))", "legendFormat": "input" }
+        { "refId": "A", "expr": "sum(increase(gen_ai_client_token_usage_sum{gen_ai_token_type=\"input\", gen_ai_request_model=~\"$model\", job=~\"$source\"}[$__range]))", "legendFormat": "input" }
       ]
     },
     {
@@ -79,22 +103,33 @@
       "title": "Output tokens",
       "description": "Per-LLM-call output tokens (gen_ai.client.token.usage).",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(max_over_time(gen_ai_client_token_usage_sum{gen_ai_token_type=\"output\", gen_ai_request_model=~\"$model\", job=~\"$source\"}[$__range]))", "legendFormat": "output" }
+        { "refId": "A", "expr": "sum(increase(gen_ai_client_token_usage_sum{gen_ai_token_type=\"output\", gen_ai_request_model=~\"$model\", job=~\"$source\"}[$__range]))", "legendFormat": "output" }
       ]
     },
     {
       "type": "stat",
       "title": "Tool calls",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(max_over_time({__name__=~\"copilot_chat_tool_call_count_total|github_copilot_tool_call_count_total\", job=~\"$source\"}[$__range]))", "legendFormat": "tool calls" }
+        { "refId": "A", "expr": "sum(increase({__name__=~\"copilot_chat_tool_call_count_total|github_copilot_tool_call_count_total\", job=~\"$source\"}[$__range]))", "legendFormat": "tool calls" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Cost over time by model",
+      "description": "copilot_cost_usd_total added per interval, split by model. Collector-computed estimate (tokens x per-model rates). Stacked to show the total spend rate.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "custom": { "drawStyle": "line", "fillOpacity": 15, "stacking": { "mode": "normal" } } } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (gen_ai_request_model) (increase(copilot_cost_usd_total{job=~\"$source\", gen_ai_request_model=~\"$model\"}[$__rate_interval]))", "legendFormat": "{{gen_ai_request_model}}" }
       ]
     },
     {
@@ -102,7 +137,7 @@
       "title": "Token usage rate by type",
       "description": "Tokens/sec from gen_ai.client.token.usage, split by gen_ai.token.type.",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 15, "stacking": { "mode": "normal" } } } },
       "targets": [
         { "refId": "A", "expr": "sum by (gen_ai_token_type) (rate(gen_ai_client_token_usage_sum{gen_ai_request_model=~\"$model\", job=~\"$source\"}[$__rate_interval]))", "legendFormat": "{{gen_ai_token_type}}" }
@@ -112,7 +147,7 @@
       "type": "timeseries",
       "title": "Token usage rate by model",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } } },
       "targets": [
         { "refId": "A", "expr": "sum by (gen_ai_request_model) (rate(gen_ai_client_token_usage_sum{gen_ai_request_model=~\"$model\", job=~\"$source\"}[$__rate_interval]))", "legendFormat": "{{gen_ai_request_model}}" }
@@ -123,7 +158,7 @@
       "title": "LLM call duration (p50 / p95)",
       "description": "gen_ai.client.operation.duration histogram (seconds). Matches both the VS Code (no unit suffix) and CLI (_seconds) metric-name variants.",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
       "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } } },
       "targets": [
         { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate({__name__=~\"gen_ai_client_operation_duration(_seconds)?_bucket\", gen_ai_request_model=~\"$model\", job=~\"$source\"}[$__rate_interval])))", "legendFormat": "p50" },
@@ -133,30 +168,30 @@
     {
       "type": "timeseries",
       "title": "Time to first token/chunk (p50 / p95)",
-      "description": "gen_ai.client.operation.time_to_first_chunk histogram (seconds). Shared by both surfaces: matches the VS Code (no unit suffix) and CLI (_seconds) metric-name variants.",
+      "description": "gen_ai.client.operation.time_to_first_chunk. VS Code emits this histogram in MILLISECONDS (le up to 10000), so it is divided by 1000 to show seconds; the CLI _seconds variant is already in seconds and is preferred when present. The two le schemes must never be merged in one histogram_quantile (that inflated p95 to ~10000, shown as 2.78h).",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
       "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } } },
       "targets": [
-        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate({__name__=~\"gen_ai_client_operation_time_to_first_chunk(_seconds)?_bucket\", gen_ai_request_model=~\"$model\", job=~\"$source\"}[$__rate_interval])))", "legendFormat": "p50" },
-        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate({__name__=~\"gen_ai_client_operation_time_to_first_chunk(_seconds)?_bucket\", gen_ai_request_model=~\"$model\", job=~\"$source\"}[$__rate_interval])))", "legendFormat": "p95" }
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(gen_ai_client_operation_time_to_first_chunk_seconds_bucket{gen_ai_request_model=~\"$model\", job=~\"$source\"}[$__rate_interval]))) or histogram_quantile(0.50, sum by (le) (rate(gen_ai_client_operation_time_to_first_chunk_bucket{gen_ai_request_model=~\"$model\", job=~\"$source\"}[$__rate_interval]))) / 1000", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(gen_ai_client_operation_time_to_first_chunk_seconds_bucket{gen_ai_request_model=~\"$model\", job=~\"$source\"}[$__rate_interval]))) or histogram_quantile(0.95, sum by (le) (rate(gen_ai_client_operation_time_to_first_chunk_bucket{gen_ai_request_model=~\"$model\", job=~\"$source\"}[$__rate_interval]))) / 1000", "legendFormat": "p95" }
       ]
     },
     {
       "type": "piechart",
       "title": "Tool calls by tool",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "legend": { "displayMode": "table", "placement": "right", "values": ["value"] } },
       "targets": [
-        { "refId": "A", "expr": "sum by (gen_ai_tool_name) (max_over_time({__name__=~\"copilot_chat_tool_call_count_total|github_copilot_tool_call_count_total\", job=~\"$source\"}[$__range]))", "legendFormat": "{{gen_ai_tool_name}}" }
+        { "refId": "A", "expr": "sum by (gen_ai_tool_name) (increase({__name__=~\"copilot_chat_tool_call_count_total|github_copilot_tool_call_count_total\", job=~\"$source\"}[$__range]))", "legendFormat": "{{gen_ai_tool_name}}" }
       ]
     },
     {
       "type": "timeseries",
       "title": "Sessions started over time",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 40 } } },
       "targets": [
         { "refId": "A", "expr": "sum(rate(copilot_chat_session_count_total[$__rate_interval]))", "legendFormat": "sessions/sec" }

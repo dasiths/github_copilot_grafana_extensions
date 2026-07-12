@@ -66,7 +66,7 @@
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
       "targets": [
-        { "refId": "A", "expr": "count(sum by (gen_ai_agent_name) (max_over_time(copilot_agent_calls_total{gen_ai_operation_name=\"invoke_agent\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) - (max_over_time(copilot_agent_calls_total{gen_ai_operation_name=\"invoke_agent\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range] offset $__range) or (max_over_time(copilot_agent_calls_total{gen_ai_operation_name=\"invoke_agent\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) * 0))) > 0) or vector(0)", "legendFormat": "agents" }
+        { "refId": "A", "expr": "count(sum by (gen_ai_agent_name) (increase(copilot_agent_calls_total{gen_ai_operation_name=\"invoke_agent\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range])) > 0) or vector(0)", "legendFormat": "agents" }
       ]
     },
     {
@@ -77,19 +77,19 @@
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(max_over_time(copilot_agent_calls_total{gen_ai_operation_name=\"invoke_agent\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) - (max_over_time(copilot_agent_calls_total{gen_ai_operation_name=\"invoke_agent\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range] offset $__range) or (max_over_time(copilot_agent_calls_total{gen_ai_operation_name=\"invoke_agent\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) * 0)))", "legendFormat": "invocations" }
+        { "refId": "A", "expr": "sum(increase(copilot_agent_calls_total{gen_ai_operation_name=\"invoke_agent\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]))", "legendFormat": "invocations" }
       ]
     },
     {
       "type": "stat",
       "title": "Est. cost (USD)",
-      "description": "Estimated USD cost of invoke_agent activity within the selected time range. Windowed the same way as the Cost & Sessions dashboard, so the two agree for a given range.",
+      "description": "Estimated USD cost of invoke_agent activity within the selected time range. Uses increase() so it stays correct across collector/counter restarts.",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
       "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 2 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(max_over_time(copilot_agent_cost_usd_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) - (max_over_time(copilot_agent_cost_usd_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range] offset $__range) or (max_over_time(copilot_agent_cost_usd_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) * 0)))", "legendFormat": "cost" }
+        { "refId": "A", "expr": "sum(increase(copilot_agent_cost_usd_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]))", "legendFormat": "cost" }
       ]
     },
     {
@@ -100,7 +100,7 @@
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(max_over_time(copilot_agent_calls_total{gen_ai_operation_name=\"execute_tool\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) - (max_over_time(copilot_agent_calls_total{gen_ai_operation_name=\"execute_tool\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range] offset $__range) or (max_over_time(copilot_agent_calls_total{gen_ai_operation_name=\"execute_tool\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) * 0)))", "legendFormat": "tool calls" }
+        { "refId": "A", "expr": "sum(increase(copilot_agent_calls_total{gen_ai_operation_name=\"execute_tool\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]))", "legendFormat": "tool calls" }
       ]
     },
     {
@@ -111,7 +111,7 @@
       "fieldConfig": { "defaults": { "unit": "short" } },
       "options": { "orientation": "horizontal", "showValue": "auto", "legend": { "showLegend": false } },
       "targets": [
-        { "refId": "A", "expr": "sum by (gen_ai_agent_name) (max_over_time(copilot_agent_calls_total{gen_ai_operation_name=\"invoke_agent\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) - (max_over_time(copilot_agent_calls_total{gen_ai_operation_name=\"invoke_agent\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range] offset $__range) or (max_over_time(copilot_agent_calls_total{gen_ai_operation_name=\"invoke_agent\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) * 0)))", "legendFormat": "{{gen_ai_agent_name}}", "format": "table", "instant": true }
+        { "refId": "A", "expr": "sum by (gen_ai_agent_name) (increase(copilot_agent_calls_total{gen_ai_operation_name=\"invoke_agent\", job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]))", "legendFormat": "{{gen_ai_agent_name}}", "format": "table", "instant": true }
       ]
     },
     {
@@ -122,7 +122,7 @@
       "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 2 } },
       "options": { "orientation": "horizontal", "showValue": "auto", "legend": { "showLegend": false } },
       "targets": [
-        { "refId": "A", "expr": "sum by (gen_ai_agent_name) (max_over_time(copilot_agent_cost_usd_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) - (max_over_time(copilot_agent_cost_usd_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range] offset $__range) or (max_over_time(copilot_agent_cost_usd_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) * 0)))", "legendFormat": "{{gen_ai_agent_name}}", "format": "table", "instant": true }
+        { "refId": "A", "expr": "sum by (gen_ai_agent_name) (increase(copilot_agent_cost_usd_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]))", "legendFormat": "{{gen_ai_agent_name}}", "format": "table", "instant": true }
       ]
     },
     {
@@ -162,7 +162,7 @@
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(max_over_time(copilot_agent_tokens_input_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) - (max_over_time(copilot_agent_tokens_input_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range] offset $__range) or (max_over_time(copilot_agent_tokens_input_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) * 0)))", "legendFormat": "input" }
+        { "refId": "A", "expr": "sum(increase(copilot_agent_tokens_input_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]))", "legendFormat": "input" }
       ]
     },
     {
@@ -174,7 +174,7 @@
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(max_over_time(copilot_agent_tokens_output_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) - (max_over_time(copilot_agent_tokens_output_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range] offset $__range) or (max_over_time(copilot_agent_tokens_output_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) * 0)))", "legendFormat": "output" }
+        { "refId": "A", "expr": "sum(increase(copilot_agent_tokens_output_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]))", "legendFormat": "output" }
       ]
     },
     {
@@ -186,7 +186,7 @@
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(max_over_time(copilot_agent_tokens_cache_read_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) - (max_over_time(copilot_agent_tokens_cache_read_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range] offset $__range) or (max_over_time(copilot_agent_tokens_cache_read_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) * 0)))", "legendFormat": "cache read" }
+        { "refId": "A", "expr": "sum(increase(copilot_agent_tokens_cache_read_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]))", "legendFormat": "cache read" }
       ]
     },
     {
@@ -198,7 +198,7 @@
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(max_over_time(copilot_agent_tokens_cache_write_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) - (max_over_time(copilot_agent_tokens_cache_write_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range] offset $__range) or (max_over_time(copilot_agent_tokens_cache_write_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) * 0)))", "legendFormat": "cache write" }
+        { "refId": "A", "expr": "sum(increase(copilot_agent_tokens_cache_write_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]))", "legendFormat": "cache write" }
       ]
     },
     {
@@ -209,7 +209,7 @@
       "fieldConfig": { "defaults": { "unit": "short" } },
       "options": { "orientation": "horizontal", "showValue": "auto", "legend": { "showLegend": false } },
       "targets": [
-        { "refId": "A", "expr": "sum by (gen_ai_agent_name) (max_over_time(copilot_agent_tokens_input_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) - (max_over_time(copilot_agent_tokens_input_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range] offset $__range) or (max_over_time(copilot_agent_tokens_input_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) * 0)))", "legendFormat": "{{gen_ai_agent_name}}", "format": "table", "instant": true }
+        { "refId": "A", "expr": "sum by (gen_ai_agent_name) (increase(copilot_agent_tokens_input_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]))", "legendFormat": "{{gen_ai_agent_name}}", "format": "table", "instant": true }
       ]
     },
     {
@@ -220,7 +220,7 @@
       "fieldConfig": { "defaults": { "unit": "short" } },
       "options": { "orientation": "horizontal", "showValue": "auto", "legend": { "showLegend": false } },
       "targets": [
-        { "refId": "A", "expr": "sum by (gen_ai_agent_name) (max_over_time(copilot_agent_tokens_output_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) - (max_over_time(copilot_agent_tokens_output_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range] offset $__range) or (max_over_time(copilot_agent_tokens_output_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]) * 0)))", "legendFormat": "{{gen_ai_agent_name}}", "format": "table", "instant": true }
+        { "refId": "A", "expr": "sum by (gen_ai_agent_name) (increase(copilot_agent_tokens_output_total{job=~\"$source\", gen_ai_agent_name=~\"$agent\"}[$__range]))", "legendFormat": "{{gen_ai_agent_name}}", "format": "table", "instant": true }
       ]
     },
     {

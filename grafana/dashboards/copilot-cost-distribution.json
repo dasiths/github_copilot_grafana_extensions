@@ -101,7 +101,7 @@
       "gridPos": { "h": 5, "w": 24, "x": 0, "y": 0 },
       "options": {
         "mode": "markdown",
-        "content": "**Cost distribution per agent** from the empirical spread of `gen_ai.usage.cost_usd`, to estimate what an agent might cost. Each sample is one **run**, set by **Cost per**: a **session** (a whole task — cost summed across its invocations and **attributed to the foreground agent**, so sub-agents like Researcher / Explore are folded in; a task spanning models shows as `(mixed)`) or a single **invocation** (one agent turn — every agent, **including sub-agents**, appears with its own model). Cost is heavy-tailed, so read the **median (p50)** as *typical* and **p90 / p99** as *bad days*, not the mean. **Pick a Model** (cost is model-dominated) and widen the range for a stabler estimate. Projections multiply p50 / p90 by **Runs per day** × 30. Indicative, from *your own* history — a new user's task complexity, context, and tool use will differ, and cost is the collector's model-priced estimate, not billed dollars."
+        "content": "**Cost distribution per agent** from the empirical spread of `gen_ai.usage.cost_usd`, to estimate what an agent might cost. Each sample is one **run**, set by **Cost per**: a **session** (a whole task — cost summed across its invocations and **attributed to the foreground agent**, so sub-agents like Researcher / Explore are folded in; a task spanning models shows as `(mixed)`) or a single **invocation** (one agent turn — every agent, **including sub-agents**, appears with its own model). Cost is heavy-tailed, so read the **median (p50)** as *typical* and **p90 / p99** as *bad days*, not the mean. **Pick a Model** (cost is model-dominated) and widen the range for a stabler estimate. The summary cards project monthly cost by multiplying p50 / p90 by **Runs per day** × 30; per-agent/model rows show the observed distribution and **Total**, not a projection — percentile projections don't sum across models. Indicative, from *your own* history — a new user's task complexity, context, and tool use will differ, and cost is the collector's model-priced estimate, not billed dollars."
       }
     },
     {
@@ -235,9 +235,7 @@
             { "selector": "p99", "text": "p99", "type": "number" },
             { "selector": "max", "text": "Max", "type": "number" },
             { "selector": "mean", "text": "Mean", "type": "number" },
-            { "selector": "total", "text": "Total", "type": "number" },
-            { "selector": "proj_monthly_p50", "text": "Proj/mo (p50)", "type": "number" },
-            { "selector": "proj_monthly_p90", "text": "Proj/mo (p90)", "type": "number" }
+            { "selector": "total", "text": "Total", "type": "number" }
           ]
         }
       ],

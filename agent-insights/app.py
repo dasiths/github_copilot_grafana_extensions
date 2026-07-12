@@ -148,6 +148,14 @@ def _agent_name(span: dict) -> str:
     return str(name)
 
 
+def _agent_match(span: dict) -> str:
+    """Raw identifier used to filter this agent's spans in Tempo: the literal
+    gen_ai.agent.name if present, else gen_ai.agent.id (e.g. the CLI's
+    github.copilot.default). Unlike _agent_name this is NOT remapped, so a data
+    link can match on span.gen_ai.agent.name OR span.gen_ai.agent.id."""
+    return str(_attr(span, "gen_ai.agent.name") or _attr(span, "gen_ai.agent.id") or "")
+
+
 def _index_spans(trace: dict) -> dict:
     spans: dict[str, dict] = {}
     for batch in trace.get("batches", []):
@@ -176,6 +184,50 @@ def _owner_agent(span: dict, spans: dict) -> str | None:
 
 
 # --- Graph builder ---------------------------------------------------------
+# Grafana's nodeGraph panel requires the edges data frame to expose an `id`
+# field. The Infinity datasource drops all columns when the source JSON array is
+# empty, so a run with no parent->subagent hops makes the panel fail with
+# "id field is required for edges data frame". When there are no real edges we
+# emit one schema-only placeholder edge to keep the `id` column present. The
+# placeholder must reference an EXISTING node id (an edge pointing at a missing
+# node crashes the panel with "cannot read nodeRadius"), so we anchor it to the
+# first node as a zero-thickness self-loop; if the graph is completely empty we
+# add a hidden sentinel node to anchor it.
+_SENTINEL_NODE_ID = "\u2205"  # empty-set glyph; unlikely to collide with an agent name
+
+
+def _with_edge_schema(graph: dict) -> dict:
+    """Guarantee a non-empty, well-formed edges frame so the nodeGraph `id`
+    field survives even when there are no parent->subagent relationships."""
+    if graph.get("edges"):
+        return graph
+    nodes = list(graph.get("nodes") or [])
+    if not nodes:
+        nodes = [{
+            "id": _SENTINEL_NODE_ID,
+            "title": "no agent activity",
+            "mainstat": "",
+            "secondarystat": "",
+            "detail__invocations": 0,
+            "detail__cost_usd": 0,
+            "detail__tokens_in": 0,
+            "detail__tokens_out": 0,
+            "detail__tool_calls": 0,
+            "detail__match": "",
+        }]
+    anchor = nodes[0]["id"]
+    placeholder = {
+        "id": "__schema__",
+        "source": anchor,
+        "target": anchor,
+        "mainstat": "",
+        "detail__invocations": 0,
+        "detail__tool": "",
+        "thickness": 0,
+    }
+    return {**graph, "nodes": nodes, "edges": [placeholder]}
+
+
 def build_graph(start: int, end: int) -> dict:
     nodes: dict[str, dict] = {}
     edges: dict[tuple, dict] = {}
@@ -189,6 +241,7 @@ def build_graph(start: int, end: int) -> dict:
                 "tokens_in": 0.0,
                 "tokens_out": 0.0,
                 "tool_calls": 0,
+                "match": "",
             }
             nodes[agent] = n
         return n
@@ -208,6 +261,8 @@ def build_graph(start: int, end: int) -> dict:
             if op == "invoke_agent":
                 agent = _agent_name(sp)
                 n = node(agent)
+                if not n["match"]:
+                    n["match"] = _agent_match(sp)
                 n["invocations"] += 1
                 n["cost_usd"] += _num(sp, "gen_ai.usage.cost_usd")
                 n["tokens_in"] += _num(sp, "gen_ai.usage.input_tokens")
@@ -218,13 +273,19 @@ def build_graph(start: int, end: int) -> dict:
                     gp = spans.get(parent.get("parentSpanId")) if parent.get("parentSpanId") else None
                     if gp is not None and _attr(gp, "gen_ai.operation.name") == "invoke_agent":
                         src = _agent_name(gp)
-                        node(src)
-                        key = (src, agent)
-                        e = edges.get(key)
-                        if e is None:
-                            e = {"count": 0, "tool": _attr(parent, "gen_ai.tool.name") or ""}
-                            edges[key] = e
-                        e["count"] += 1
+                        nsrc = node(src)
+                        if not nsrc["match"]:
+                            nsrc["match"] = _agent_match(gp)
+                        # Skip self-edges (agent invoking a subagent of the same
+                        # name): nodeGraph cannot lay out a node->itself line and
+                        # renders it with NaN coordinates.
+                        if src != agent:
+                            key = (src, agent)
+                            e = edges.get(key)
+                            if e is None:
+                                e = {"count": 0, "tool": _attr(parent, "gen_ai.tool.name") or ""}
+                                edges[key] = e
+                            e["count"] += 1
             elif op == "execute_tool":
                 owner = _owner_agent(sp, spans)
                 if owner:
@@ -241,6 +302,7 @@ def build_graph(start: int, end: int) -> dict:
             "detail__tokens_in": int(s["tokens_in"]),
             "detail__tokens_out": int(s["tokens_out"]),
             "detail__tool_calls": s["tool_calls"],
+            "detail__match": s.get("match", ""),
         }
         for agent, s in sorted(nodes.items())
     ]
@@ -256,7 +318,7 @@ def build_graph(start: int, end: int) -> dict:
         }
         for (src, dst), e in sorted(edges.items())
     ]
-    return {"nodes": node_frame, "edges": edge_frame}
+    return _with_edge_schema({"nodes": node_frame, "edges": edge_frame})
 
 
 # --- Conversation + timeline builders (Agent Timeline dashboard) ------------
@@ -695,10 +757,15 @@ def build_cost_distribution(start: int, end: int, unit: str = "session",
     groups: dict[tuple, list] = {}
     for a, m, c in fsamples:
         groups.setdefault((a, m), []).append(c)
+    # Per-group monthly projections are intentionally omitted: percentile
+    # projections do not sum across agents/models (the pool's p90 is not the sum
+    # of per-group p90s), so a per-row projection would mislead when added up.
+    # Only the pooled summary cards project cost; per-group rows show the
+    # observed distribution and actual total.
     stats = []
     for (a, m), vals in groups.items():
         row = {"agent": a, "model": m, "group": f"{a} \u00b7 {m}", "unit": unit}
-        row.update(_dist_stats(vals, per_day))
+        row.update(_dist_stats(vals, 0.0))
         stats.append(row)
     stats.sort(key=lambda r: -r["total"])
 
@@ -857,7 +924,7 @@ def _cached(key: tuple, builder, empty):
 
 def graph_for(start: int, end: int) -> dict:
     key = ("graph", start // CACHE_BUCKET, end // CACHE_BUCKET)
-    return _cached(key, lambda: build_graph(start, end), {"nodes": [], "edges": []})
+    return _cached(key, lambda: build_graph(start, end), _with_edge_schema({"nodes": [], "edges": []}))
 
 
 def conversations_for(start: int, end: int, failures_only: bool = False,

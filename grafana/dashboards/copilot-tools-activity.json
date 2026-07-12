@@ -45,7 +45,7 @@
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(max_over_time(copilot_chat_agent_invocation_duration_count[$__range]))", "legendFormat": "invocations" }
+        { "refId": "A", "expr": "sum(increase(copilot_chat_agent_invocation_duration_count[$__range]))", "legendFormat": "invocations" }
       ]
     },
     {
@@ -56,7 +56,7 @@
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(max_over_time(copilot_chat_lines_of_code_count_total[$__range]))", "legendFormat": "lines" }
+        { "refId": "A", "expr": "sum(increase(copilot_chat_lines_of_code_count_total[$__range]))", "legendFormat": "lines" }
       ]
     },
     {
@@ -67,7 +67,7 @@
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(max_over_time(copilot_chat_edit_acceptance_count_total[$__range]))", "legendFormat": "decisions" }
+        { "refId": "A", "expr": "sum(increase(copilot_chat_edit_acceptance_count_total[$__range]))", "legendFormat": "decisions" }
       ]
     },
     {
@@ -78,7 +78,7 @@
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
       "targets": [
-        { "refId": "A", "expr": "sum(max_over_time(copilot_chat_user_feedback_count_total[$__range]))", "legendFormat": "votes" }
+        { "refId": "A", "expr": "sum(increase(copilot_chat_user_feedback_count_total[$__range]))", "legendFormat": "votes" }
       ]
     },
     {
@@ -89,7 +89,7 @@
       "fieldConfig": { "defaults": { "unit": "short" } },
       "options": { "orientation": "horizontal", "showValue": "auto", "legend": { "showLegend": false } },
       "targets": [
-        { "refId": "A", "expr": "sum by (gen_ai_tool_name) (max_over_time({__name__=~\"copilot_chat_tool_call_count_total|github_copilot_tool_call_count_total\", gen_ai_tool_name=~\"$tool\"}[$__range]))", "legendFormat": "{{gen_ai_tool_name}}", "format": "table", "instant": true }
+        { "refId": "A", "expr": "sum by (gen_ai_tool_name) (increase({__name__=~\"copilot_chat_tool_call_count_total|github_copilot_tool_call_count_total\", gen_ai_tool_name=~\"$tool\"}[$__range]))", "legendFormat": "{{gen_ai_tool_name}}", "format": "table", "instant": true }
       ]
     },
     {
@@ -127,13 +127,13 @@
     {
       "type": "timeseries",
       "title": "Agent invocation duration (p50 / p95)",
-      "description": "copilot_chat.agent.invocation.duration histogram (seconds).",
+      "description": "copilot_chat.agent.invocation.duration histogram. Emitted in MILLISECONDS (le up to 10000), so divided by 1000 to show seconds.",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 21 },
       "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } } },
       "targets": [
-        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(copilot_chat_agent_invocation_duration_bucket[$__rate_interval])))", "legendFormat": "p50" },
-        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(copilot_chat_agent_invocation_duration_bucket[$__rate_interval])))", "legendFormat": "p95" }
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(copilot_chat_agent_invocation_duration_bucket[$__rate_interval]))) / 1000", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(copilot_chat_agent_invocation_duration_bucket[$__rate_interval]))) / 1000", "legendFormat": "p95" }
       ]
     }
   ]
